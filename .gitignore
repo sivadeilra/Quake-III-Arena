@@ -1,3 +1,9 @@
 *.obj
 *.vcxproj.user
 .vs
+Debug/
+Debug_TA/
+Debug_Alpha/
+DebugAxp/
+code-rs/target/
+code-rs/Cargo.lock
