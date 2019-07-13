@@ -21,11 +21,7 @@ impl vec3_t {
     };
 
     pub fn from_scalar(f: f32) -> vec3_t {
-        vec3_t {
-            x: f,
-            y: f,
-            z: f
-        }
+        vec3_t { x: f, y: f, z: f }
     }
 
     pub fn dot(self, other: vec3_t) -> f32 {
@@ -77,7 +73,7 @@ impl vec3_t {
     }
 }
 
-use std::ops::{Add, AddAssign, Index, IndexMut, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Index, IndexMut, Mul, Sub, SubAssign};
 
 impl std::ops::Neg for vec3_t {
     type Output = vec3_t;
@@ -283,4 +279,3 @@ impl vec4_t {
         }
     }
 }
-
