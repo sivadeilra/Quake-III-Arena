@@ -16,10 +16,10 @@ pub fn ClearBounds() -> vec3_bounds {
 pub fn AddPointToBounds(v: vec3_t, bounds: &mut vec3_bounds) {
     for i in 0..3 {
         let val = v[i];
-        if (val < bounds.mins[i]) {
+        if val < bounds.mins[i] {
             bounds.mins[i] = val;
         }
-        if (val > bounds.maxs[i]) {
+        if val > bounds.maxs[i] {
             bounds.maxs[i] = val;
         }
     }

@@ -988,8 +988,7 @@ fn CM_AddFacetBevels(planes: &mut Vec<patchPlane_t>, facet: &mut facet_t) {
                     facet.borderPlanes[facet.numBorders as usize] = plane_index as i32;
 
                     for k in 0..facet.numBorders as usize {
-                        if (facet.borderPlanes[facet.numBorders as usize] == facet.borderPlanes[k])
-                        {
+                        if facet.borderPlanes[facet.numBorders as usize] == facet.borderPlanes[k] {
                             warn!("WARNING: bevel plane already used\n");
                         }
                     }
@@ -1067,55 +1066,55 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> patchCollide_t {
             let mut noAdjust: [bool; 4] = [false; 4];
 
             borders[EN_TOP] = -1;
-            if (j > 0) {
+            if j > 0 {
                 borders[EN_TOP] = gridPlanes[i][j - 1][1];
-            } else if (grid.wrapHeight) {
+            } else if grid.wrapHeight {
                 borders[EN_TOP] = gridPlanes[i][grid.height - 2][1];
             }
-            noAdjust[EN_TOP] = (borders[EN_TOP] == gridPlanes[i][j][0]);
-            if (borders[EN_TOP] == -1 || noAdjust[EN_TOP]) {
+            noAdjust[EN_TOP] = borders[EN_TOP] == gridPlanes[i][j][0];
+            if borders[EN_TOP] == -1 || noAdjust[EN_TOP] {
                 borders[EN_TOP] =
                     CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 0).unwrap() as i32;
             }
 
             borders[EN_BOTTOM] = -1;
-            if (j < grid.height - 2) {
+            if j < grid.height - 2 {
                 borders[EN_BOTTOM] = gridPlanes[i][j + 1][0];
-            } else if (grid.wrapHeight) {
+            } else if grid.wrapHeight {
                 borders[EN_BOTTOM] = gridPlanes[i][0][0];
             }
-            noAdjust[EN_BOTTOM] = (borders[EN_BOTTOM] == gridPlanes[i][j][1]);
-            if (borders[EN_BOTTOM] == -1 || noAdjust[EN_BOTTOM]) {
+            noAdjust[EN_BOTTOM] = borders[EN_BOTTOM] == gridPlanes[i][j][1];
+            if borders[EN_BOTTOM] == -1 || noAdjust[EN_BOTTOM] {
                 borders[EN_BOTTOM] =
                     CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 2).unwrap() as i32;
             }
 
             borders[EN_LEFT] = -1;
-            if (i > 0) {
+            if i > 0 {
                 borders[EN_LEFT] = gridPlanes[i - 1][j][0];
-            } else if (grid.wrapWidth) {
+            } else if grid.wrapWidth {
                 borders[EN_LEFT] = gridPlanes[grid.width - 2][j][0];
             }
-            noAdjust[EN_LEFT] = (borders[EN_LEFT] == gridPlanes[i][j][1]);
-            if (borders[EN_LEFT] == -1 || noAdjust[EN_LEFT]) {
+            noAdjust[EN_LEFT] = borders[EN_LEFT] == gridPlanes[i][j][1];
+            if borders[EN_LEFT] == -1 || noAdjust[EN_LEFT] {
                 borders[EN_LEFT] =
                     CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 3).unwrap() as i32;
             }
 
             borders[EN_RIGHT] = -1;
-            if (i < grid.width - 2) {
+            if i < grid.width - 2 {
                 borders[EN_RIGHT] = gridPlanes[i + 1][j][1];
-            } else if (grid.wrapWidth) {
+            } else if grid.wrapWidth {
                 borders[EN_RIGHT] = gridPlanes[0][j][1];
             }
-            noAdjust[EN_RIGHT] = (borders[EN_RIGHT] == gridPlanes[i][j][0]);
-            if (borders[EN_RIGHT] == -1 || noAdjust[EN_RIGHT]) {
+            noAdjust[EN_RIGHT] = borders[EN_RIGHT] == gridPlanes[i][j][0];
+            if borders[EN_RIGHT] == -1 || noAdjust[EN_RIGHT] {
                 borders[EN_RIGHT] =
                     CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 1).unwrap() as i32;
             }
 
-            if (gridPlanes[i][j][0] == gridPlanes[i][j][1]) {
-                if (gridPlanes[i][j][0] == -1) {
+            if gridPlanes[i][j][0] == gridPlanes[i][j][1] {
+                if gridPlanes[i][j][0] == -1 {
                     continue; // degenerate
                 }
                 let mut facet = facet_t::default();
@@ -1130,7 +1129,7 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> patchCollide_t {
                 facet.borderPlanes[3] = borders[EN_LEFT];
                 facet.borderNoAdjust[3] = noAdjust[EN_LEFT];
                 CM_SetBorderInward(&planes, &mut facet, grid, &gridPlanes, i, j, -1);
-                if (CM_ValidateFacet(&planes, &facet)) {
+                if CM_ValidateFacet(&planes, &facet) {
                     CM_AddFacetBevels(&mut planes, &mut facet);
                     facets.push(facet);
                 }
@@ -1145,16 +1144,16 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> patchCollide_t {
                     facet.borderPlanes[1] = borders[EN_RIGHT];
                     facet.borderNoAdjust[1] = noAdjust[EN_RIGHT];
                     facet.borderPlanes[2] = gridPlanes[i][j][1];
-                    if (facet.borderPlanes[2] == -1) {
+                    if facet.borderPlanes[2] == -1 {
                         facet.borderPlanes[2] = borders[EN_BOTTOM];
-                        if (facet.borderPlanes[2] == -1) {
+                        if facet.borderPlanes[2] == -1 {
                             facet.borderPlanes[2] =
                                 CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 4).unwrap()
                                     as i32;
                         }
                     }
                     CM_SetBorderInward(&planes, &mut facet, grid, &gridPlanes, i, j, 0);
-                    if (CM_ValidateFacet(&planes, &facet)) {
+                    if CM_ValidateFacet(&planes, &facet) {
                         CM_AddFacetBevels(&mut planes, &mut facet);
                         facets.push(facet);
                     }
@@ -1170,16 +1169,16 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> patchCollide_t {
                     facet.borderPlanes[1] = borders[EN_LEFT];
                     facet.borderNoAdjust[1] = noAdjust[EN_LEFT];
                     facet.borderPlanes[2] = gridPlanes[i][j][0];
-                    if (facet.borderPlanes[2] == -1) {
+                    if facet.borderPlanes[2] == -1 {
                         facet.borderPlanes[2] = borders[EN_TOP];
-                        if (facet.borderPlanes[2] == -1) {
+                        if facet.borderPlanes[2] == -1 {
                             facet.borderPlanes[2] =
                                 CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 5).unwrap()
                                     as i32;
                         }
                     }
                     CM_SetBorderInward(&planes, &mut facet, grid, &gridPlanes, i, j, 1);
-                    if (CM_ValidateFacet(&planes, &facet)) {
+                    if CM_ValidateFacet(&planes, &facet) {
                         CM_AddFacetBevels(&mut planes, &mut facet);
                         facets.push(facet);
                     }
@@ -1324,10 +1323,10 @@ fn CM_TracePointThroughPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) {
             continue;
         }
         let intersect = intersection[facet.surfacePlane as usize];
-        if (intersect < 0.0) {
+        if intersect < 0.0 {
             continue; // surface is behind the starting point
         }
-        if (intersect > tw.trace.fraction) {
+        if intersect > tw.trace.fraction {
             continue; // already hit something closer
         }
         let mut hit_facet = true;
@@ -1400,34 +1399,34 @@ fn CM_CheckFacetPlane(
     let d2 = plane.project_near(end);
 
     // if completely in front of face, no intersection with the entire facet
-    if (d1 > 0.0 && (d2 >= SURFACE_CLIP_EPSILON || d2 >= d1)) {
+    if d1 > 0.0 && (d2 >= SURFACE_CLIP_EPSILON || d2 >= d1) {
         return Output { result: false, hit };
     }
 
     // if it doesn't cross the plane, the plane isn't relevent
-    if (d1 <= 0.0 && d2 <= 0.0) {
+    if d1 <= 0.0 && d2 <= 0.0 {
         return Output { result: true, hit };
     }
 
     // crosses face
-    if (d1 > d2) {
+    if d1 > d2 {
         // enter
         let mut f = (d1 - SURFACE_CLIP_EPSILON) / (d1 - d2);
-        if (f < 0.0) {
+        if f < 0.0 {
             f = 0.0;
         }
         //always favor previous plane hits and thus also the surface plane hit
-        if (f > *enterFrac) {
+        if f > *enterFrac {
             *enterFrac = f;
             hit = true;
         }
     } else {
         // leave
         let mut f = (d1 + SURFACE_CLIP_EPSILON) / (d1 - d2);
-        if (f > 1.0) {
+        if f > 1.0 {
             f = 1.0;
         }
-        if (f < *leaveFrac) {
+        if f < *leaveFrac {
             *leaveFrac = f;
         }
     }
@@ -1574,16 +1573,10 @@ POSITION TEST
 =======================================================================
 */
 
-/*
-====================
-CM_PositionTestInPatchCollide
-====================
-*/
 pub fn CM_PositionTestInPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) -> bool {
     if tw.isPoint {
         return false;
     }
-    //
     for facet in pc.facets.iter() {
         {
             let planes = &pc.planes[facet.surfacePlane as usize];
@@ -1595,7 +1588,7 @@ pub fn CM_PositionTestInPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) 
 
                 // find the closest point on the capsule to the plane
                 let t = plane.normal.dot(tw.sphere.offset);
-                startp = if (t > 0.0) {
+                startp = if t > 0.0 {
                     tw.start - tw.sphere.offset
                 } else {
                     tw.start + tw.sphere.offset
@@ -1605,7 +1598,7 @@ pub fn CM_PositionTestInPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) 
                 startp = tw.start;
             }
 
-            if plane.normal.dot(startp) - plane.dist > 0.0 {
+            if plane.project_near(startp) > 0.0 {
                 continue;
             }
         }
@@ -1613,7 +1606,7 @@ pub fn CM_PositionTestInPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) 
         let mut early_break = false;
         for j in 0..facet.numBorders as usize {
             let planes = &pc.planes[facet.borderPlanes[j] as usize];
-            let mut plane: plane_t = if facet.borderInward[j] {
+            let mut plane = if facet.borderInward[j] {
                 planes.plane.flip()
             } else {
                 planes.plane
@@ -1625,20 +1618,18 @@ pub fn CM_PositionTestInPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) 
 
                 // find the closest point on the capsule to the plane
                 let t = plane.normal.dot(tw.sphere.offset);
-                startp =
-                    if t > 0.0 {
-                        tw.start - tw.sphere.offset
-                    } else {
-                        tw.start + tw.sphere.offset
-                    };
+                startp = if t > 0.0 {
+                    tw.start - tw.sphere.offset
+                } else {
+                    tw.start + tw.sphere.offset
+                };
             } else {
                 // NOTE: this works even though the plane might be flipped because the bbox is centered
-                let offset = tw.offsets[planes.signbits as usize].dot(plane.normal);
-                plane.dist += offset.abs();
+                plane.dist += tw.offsets[planes.signbits as usize].dot(plane.normal).abs();
                 startp = tw.start;
             }
 
-            if plane.normal.dot(startp) - plane.dist > 0.0 {
+            if plane.project_near(startp) > 0.0 {
                 early_break = true;
                 break;
             }
