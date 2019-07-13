@@ -29,10 +29,13 @@ macro_rules! todo_type {
 pub mod perf;
 pub mod qcommon;
 pub mod vec3;
+pub mod bounds;
 
 pub mod prelude {
     pub use crate::side::*;
     pub use crate::vec3::*;
+    pub use crate::num_utils::*;
+    pub use crate::bounds::*;
 }
 
 pub fn is_close_to(a: f32, b: f32, epsilon: f32) -> bool {
@@ -56,4 +59,15 @@ mod side {
     pub const SIDE_BACK: Side = Side::BACK;
     pub const SIDE_ON: Side = Side::ON;
     pub const SIDE_CROSS: Side = Side::CROSS;
+}
+
+pub mod num_utils {
+    pub fn is_odd<N>(n: N) -> bool 
+        where N: std::ops::Rem<N, Output=N>,
+            N: From<u8>,
+            N: PartialEq
+
+    {
+        n % N::from(2u8) != N::from(0u8)
+    }
 }

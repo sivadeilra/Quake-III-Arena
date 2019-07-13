@@ -20,6 +20,14 @@ impl vec3_t {
         z: 0.0,
     };
 
+    pub fn from_scalar(f: f32) -> vec3_t {
+        vec3_t {
+            x: f,
+            y: f,
+            z: f
+        }
+    }
+
     pub fn dot(self, other: vec3_t) -> f32 {
         self.x * other.x + self.y * other.y + self.z * other.z
     }
@@ -276,8 +284,3 @@ impl vec4_t {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct vec3_bounds {
-    pub mins: vec3_t,
-    pub maxs: vec3_t,
-}

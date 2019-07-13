@@ -102,7 +102,7 @@ pub struct facet_t {
 pub type patchCollide_s = patchCollide_t;
 #[derive(Clone, Debug)]
 pub struct patchCollide_t {
-    pub bounds: [vec3_t; 2],
+    pub bounds: vec3_bounds,
 
     // surface planes plus edge planes
     pub planes: Vec<patchPlane_t>,
@@ -112,14 +112,25 @@ pub struct patchCollide_t {
 
 pub const MAX_GRID_SIZE: usize = 129;
 
+#[derive(Clone)]
 pub struct cGrid_t {
     pub width: usize,
     pub height: usize,
     pub wrapWidth: bool,
     pub wrapHeight: bool,
-
     // [width][height]
     pub points: [[vec3_t; MAX_GRID_SIZE]; MAX_GRID_SIZE],
+}
+impl cGrid_t {
+    pub fn empty() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            wrapWidth: false,
+            wrapHeight: false,
+            points: [[vec3_t::ORIGIN; MAX_GRID_SIZE]; MAX_GRID_SIZE]
+        }
+    }
 }
 
 pub const SUBDIVIDE_DISTANCE: f32 = 16.0; //4 // never more than this units away from curve
@@ -1016,7 +1027,7 @@ pub const EN_LEFT: edgeName_t = 3;
 CM_PatchCollideFromGrid
 ==================
 */
-fn CM_PatchCollideFromGrid(grid: &mut cGrid_t) -> patchCollide_t {
+fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> patchCollide_t {
     let mut gridPlanes: GridPlanes = [[[0; 2]; MAX_GRID_SIZE]; MAX_GRID_SIZE];
     let mut facets: Vec<facet_t> = Vec::new();
     let mut planes: Vec<patchPlane_t> = Vec::new();
@@ -1160,11 +1171,9 @@ fn CM_PatchCollideFromGrid(grid: &mut cGrid_t) -> patchCollide_t {
     patchCollide_t {
         facets,
         planes,
-        bounds: Default::default()
+        bounds: ClearBounds()
     }
 }
-
-/*
 
 /*
 ===================
@@ -1176,73 +1185,67 @@ collision detection with a patch mesh.
 Points is packed as concatenated rows.
 ===================
 */
-struct patchCollide_s   *CM_GeneratePatchCollide( int width, int height, vec3_t *points ) {
-    patchCollide_t  *pf;
-    MAC_STATIC cGrid_t          grid;
-    int             i, j;
+pub fn CM_GeneratePatchCollide(width: usize, height: usize, points: &[vec3_t]) -> patchCollide_t {
+    assert!(width > 2);
+    assert!(height > 2);
+    assert!(!points.is_empty());
+    assert!(is_odd(width) && is_odd(height), "CM_GeneratePatchFacets: even sizes are invalid for quadratic meshes" );
+    assert!(width <= MAX_GRID_SIZE);
+    assert!(height <= MAX_GRID_SIZE);
 
-    if ( width <= 2 || height <= 2 || !points ) {
-        Com_Error( ERR_DROP, "CM_GeneratePatchFacets: bad parameters: (%i, %i, %p)",
-            width, height, points );
-    }
-
-    if ( !(width & 1) || !(height & 1) ) {
-        Com_Error( ERR_DROP, "CM_GeneratePatchFacets: even sizes are invalid for quadratic meshes" );
-    }
-
-    if ( width > MAX_GRID_SIZE || height > MAX_GRID_SIZE ) {
-        Com_Error( ERR_DROP, "CM_GeneratePatchFacets: source is > MAX_GRID_SIZE" );
-    }
+    let mut grid: cGrid_t = cGrid_t::empty();
 
     // build a grid
     grid.width = width;
     grid.height = height;
     grid.wrapWidth = false;
     grid.wrapHeight = false;
-    for ( i = 0 ; i < width ; i++ ) {
-        for ( j = 0 ; j < height ; j++ ) {
-            VectorCopy( points[j*width + i], grid.points[i][j] );
+    for i in 0..width {
+        for j in 0..height {
+            grid.points[i][j] = points[j*width + i];
         }
     }
 
     // subdivide the grid
-    CM_SetGridWrapWidth( &grid );
-    CM_SubdivideGridColumns( &grid );
-    CM_RemoveDegenerateColumns( &grid );
+    CM_SetGridWrapWidth( &mut grid );
+    CM_SubdivideGridColumns( &mut grid );
+    CM_RemoveDegenerateColumns( &mut grid );
 
-    CM_TransposeGrid( &grid );
+    CM_TransposeGrid( &mut grid );
 
-    CM_SetGridWrapWidth( &grid );
-    CM_SubdivideGridColumns( &grid );
-    CM_RemoveDegenerateColumns( &grid );
+    CM_SetGridWrapWidth( &mut grid );
+    CM_SubdivideGridColumns( &mut grid );
+    CM_RemoveDegenerateColumns( &mut grid );
 
     // we now have a grid of points exactly on the curve
     // the aproximate surface defined by these points will be
     // collided against
-    pf = Hunk_Alloc( sizeof( *pf ), h_high );
-    ClearBounds( pf->bounds[0], pf->bounds[1] );
-    for ( i = 0 ; i < grid.width ; i++ ) {
-        for ( j = 0 ; j < grid.height ; j++ ) {
-            AddPointToBounds( grid.points[i][j], pf->bounds[0], pf->bounds[1] );
+    let mut bounds = ClearBounds();
+    for i in 0..grid.width as usize {
+        for j in 0..grid.height as usize {
+            AddPointToBounds(grid.points[i][j], &mut bounds);
         }
     }
 
-    c_totalPatchBlocks += ( grid.width - 1 ) * ( grid.height - 1 );
+    c_totalPatchBlocks.add_usize((grid.width - 1) * (grid.height - 1));
 
     // generate a bsp tree for the surface
-    CM_PatchCollideFromGrid( &grid, pf );
+    let mut pf = CM_PatchCollideFromGrid(&grid);
 
     // expand by one unit for epsilon purposes
-    pf->bounds[0][0] -= 1;
-    pf->bounds[0][1] -= 1;
-    pf->bounds[0][2] -= 1;
+    bounds.mins.x -= 1.0;
+    bounds.mins.y -= 1.0;
+    bounds.mins.z -= 1.0;
 
-    pf->bounds[1][0] += 1;
-    pf->bounds[1][1] += 1;
-    pf->bounds[1][2] += 1;
+    bounds.maxs.x += 1.0;
+    bounds.maxs.y += 1.0;
+    bounds.maxs.z += 1.0;
 
-    return pf;
+    pf.bounds = bounds;
+    pf
 }
+
+/*
 
 /*
 ================================================================================
