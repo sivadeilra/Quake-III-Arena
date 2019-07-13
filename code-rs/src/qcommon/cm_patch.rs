@@ -75,6 +75,14 @@ pub struct plane_t {
     pub normal: vec3_t,
     pub dist: vec_t,
 }
+impl plane_t {
+    pub fn flip(self) -> plane_t {
+        plane_t {
+            normal: -self.normal,
+            dist: -self.dist
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct patchPlane_t {
@@ -82,7 +90,7 @@ pub struct patchPlane_t {
     pub signbits: i32,  // signx + (signy<<1) + (signz<<2), used as lookup during collision
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct facet_t {
     pub surfacePlane: i32,
     pub numBorders: i32, // 3 or four + 6 axial bevels + 4 or 3 * 4 edge bevels
@@ -714,11 +722,6 @@ fn CM_EdgePlaneNum(
     }
 }
 
-/*
-===================
-CM_SetBorderInward
-===================
-*/
 fn CM_SetBorderInward(
     planes: &[patchPlane_t],
     facet: &mut facet_t,
@@ -844,69 +847,69 @@ fn CM_ValidateFacet(planes: &[patchPlane_t], facet: &facet_t) -> bool {
 }
 
 /*
-/*
 ==================
 CM_AddFacetBevels
 ==================
 */
-fn CM_AddFacetBevels(facet: &facet_t) {
+fn CM_AddFacetBevels(planes: &mut Vec<patchPlane_t>, facet: &mut facet_t) {
 
-    int i, j, k, l;
-    int axis, dir, order, flipped;
-    float d, newplane[4];
-    winding_t *w2;
-    vec3_t mins, maxs, vec, vec2;
+    // int i, j, k, l;
+    // int dir, flipped;
+    // float d, newplane[4];
+    // winding_t *w2;
+    // vec3_t mins, maxs, vec, vec2;
 
-    let mut plane = planes[ facet.surfacePlane ].plane;
-
-    let w = BaseWindingForPlane(plane.normal,  plane.dist);
+    let mut w = {
+        let plane = planes[facet.surfacePlane as usize].plane;
+        BaseWindingForPlane(plane.normal,  plane.dist)
+    };
     for j in 0..facet.numBorders  as usize {
-        if (facet.borderPlanes[j] == facet.surfacePlane) continue;
-        Vector4Copy( planes[ facet.borderPlanes[j] ].plane, plane );
-
-        if ( !facet.borderInward[j] ) {
-            VectorSubtract( vec3_origin, plane, plane );
-            plane[3] = -plane[3];
+        if facet.borderPlanes[j] == facet.surfacePlane {
+            continue;
+        }
+        let mut plane = planes[facet.borderPlanes[j] as usize].plane;
+        if !facet.borderInward[j] {
+            plane = plane.flip();
         }
 
-        ChopWindingInPlace( &w, plane, plane[3], 0.1f );
+        ChopWindingInPlace(&mut w, plane.normal, plane.dist, 0.1);
     }
-    if ( !w ) {
+    if w.is_empty() {
         return;
     }
 
-    WindingBounds(w, mins, maxs);
+    let bounds = WindingBounds(&w);
 
     // add the axial planes
-    order = 0;
-    for ( axis = 0 ; axis < 3 ; axis++ )
-    {
-        for ( dir = -1 ; dir <= 1 ; dir += 2, order++ )
-        {
-            VectorClear(plane);
-            plane[axis] = dir;
-            if (dir == 1) {
-                plane[3] = maxs[axis];
-            }
-            else {
-                plane[3] = -mins[axis];
-            }
-            //if it's the surface plane
-            if (CM_PlaneEqual(&planes[facet.surfacePlane], plane, &flipped)) {
+    for axis in 0..3 {
+        for &dir in [-1, 1].into_iter() {
+            let mut plane = plane_t {
+                normal: vec3_t::ORIGIN,
+                dist: if dir == 1 {
+                        bounds.maxs[axis]
+                    } else {
+                        -bounds.mins[axis]
+                    },
+            };
+            plane.normal[axis] = dir as f32;
+            
+            // if it's the surface plane
+            if CM_PlaneEqual(planes[facet.surfacePlane as usize].plane, plane).is_equal {
                 continue;
             }
             // see if the plane is allready present
-            for ( i = 0 ; i < facet.numBorders ; i++ ) {
-                if (CM_PlaneEqual(&planes[facet.borderPlanes[i]], plane, &flipped))
-                    break;
-            }
-
-            if ( i == facet.numBorders ) {
-                if (facet.numBorders > 4 + 6 + 16) Com_Printf("ERROR: too many bevels\n");
-                facet.borderPlanes[facet.numBorders] = CM_FindPlane2(plane, &flipped);
-                facet.borderNoAdjust[facet.numBorders] = 0;
-                facet.borderInward[facet.numBorders] = flipped;
-                facet.numBorders++;
+            let any_plane_equal = (0..facet.numBorders as usize).any(|i|
+                CM_PlaneEqual(planes[facet.borderPlanes[i] as usize].plane, plane).is_equal);
+            if !any_plane_equal {
+                if facet.numBorders > 4 + 6 + 16 {
+                    warn!("ERROR: too many bevels\n");
+                }
+                let (plane_index, flipped) = CM_FindPlane2(planes, plane);
+                let border_index = facet.numBorders as usize;
+                facet.borderPlanes[border_index] = plane_index as i32;
+                facet.borderNoAdjust[border_index] = false;
+                facet.borderInward[border_index] = flipped;
+                facet.numBorders += 1;
             }
         }
     }
@@ -914,143 +917,130 @@ fn CM_AddFacetBevels(facet: &facet_t) {
     // add the edge bevels
     //
     // test the non-axial plane edges
-    for ( j = 0 ; j < w->numpoints ; j++ )
-    {
-        k = (j+1)%w->numpoints;
-        VectorSubtract (w->p[j], w->p[k], vec);
-        //if it's a degenerate edge
-        if (VectorNormalize (vec) < 0.5)
+    for j in 0 .. w.len() {
+        let k = (j + 1) % w.len();
+        let mut vec = w[j] - w[k];
+        // if it's a degenerate edge
+        if VectorNormalize_mut(&mut vec) < 0.5 {
             continue;
-        CM_SnapVector(vec);
-        for ( k = 0; k < 3 ; k++ )
-            if ( vec[k] == -1 || vec[k] == 1 )
-                break;  // axial
-        if ( k < 3 )
+        }
+        vec = CM_SnapVector_func(vec);
+        let any_axial = (0..3).map(|k| vec[k]).any(|value| value == -1.0 || value == 1.0);
+        if any_axial {
             continue;   // only test non-axial edges
+        }
 
         // try the six possible slanted axials from this edge
-        for ( axis = 0 ; axis < 3 ; axis++ )
-        {
-            for ( dir = -1 ; dir <= 1 ; dir += 2 )
-            {
+        for axis in 0..3 {
+            for &dir in [-1, 1].into_iter() {
                 // construct a plane
-                VectorClear (vec2);
-                vec2[axis] = dir;
-                CrossProduct (vec, vec2, plane);
-                if (VectorNormalize (plane) < 0.5)
+                let mut vec2 = vec3_t::ORIGIN;
+                vec2[axis] = dir as f32;
+                let mut plane_normal = CrossProduct(vec, vec2);
+                if VectorNormalize_mut(&mut plane_normal) < 0.5 {
                     continue;
-                plane[3] = DotProduct (w->p[j], plane);
+                }
+                let plane = plane_t {
+                    normal: plane_normal,
+                    dist: w[j].dot(plane_normal),
+                };
 
                 // if all the points of the facet winding are
                 // behind this plane, it is a proper edge bevel
-                for ( l = 0 ; l < w->numpoints ; l++ )
-                {
-                    d = DotProduct (w->p[l], plane) - plane[3];
-                    if (d > 0.1)
-                        break;  // point in front
-                }
-                if ( l < w->numpoints )
+                let any_points_in_front = w.iter().any(|&wp| wp.dot(plane.normal) - plane.dist > 0.1);
+                if any_points_in_front {
                     continue;
+                }
 
                 //if it's the surface plane
-                if (CM_PlaneEqual(&planes[facet.surfacePlane], plane, &flipped)) {
+                if CM_PlaneEqual(planes[facet.surfacePlane as usize].plane, plane).is_equal {
                     continue;
                 }
                 // see if the plane is allready present
-                for ( i = 0 ; i < facet.numBorders ; i++ ) {
-                    if (CM_PlaneEqual(&planes[facet.borderPlanes[i]], plane, &flipped)) {
-                            break;
+                let any_plane_equal = (0..facet.numBorders as usize)
+                    .any(|i| CM_PlaneEqual(planes[facet.borderPlanes[i] as usize].plane, plane).is_equal);
+                if !any_plane_equal {
+                    if facet.numBorders > 4 + 6 + 16 {
+                        warn!("ERROR: too many bevels\n");
                     }
-                }
+                    let (plane_index, flipped) = CM_FindPlane2(planes, plane);
+                    facet.borderPlanes[facet.numBorders as usize] = plane_index as i32;
 
-                if ( i == facet.numBorders ) {
-                    if (facet.numBorders > 4 + 6 + 16) Com_Printf("ERROR: too many bevels\n");
-                    facet.borderPlanes[facet.numBorders] = CM_FindPlane2(plane, &flipped);
-
-                    for ( k = 0 ; k < facet.numBorders ; k++ ) {
-                        if (facet.borderPlanes[facet.numBorders] ==
-                            facet.borderPlanes[k]) Com_Printf("WARNING: bevel plane already used\n");
+                    for k in 0..facet.numBorders as usize {
+                        if (facet.borderPlanes[facet.numBorders as usize] == facet.borderPlanes[k]) {
+                            warn!("WARNING: bevel plane already used\n");
+                        }
                     }
 
-                    facet.borderNoAdjust[facet.numBorders] = 0;
-                    facet.borderInward[facet.numBorders] = flipped;
+                    facet.borderNoAdjust[facet.numBorders as usize] = false;
+                    facet.borderInward[facet.numBorders as usize] = flipped;
                     //
-                    w2 = CopyWinding(w);
-                    Vector4Copy(planes[facet.borderPlanes[facet.numBorders]].plane, newplane);
-                    if (!facet.borderInward[facet.numBorders])
-                    {
-                        VectorNegate(newplane, newplane);
-                        newplane[3] = -newplane[3];
-                    } //end if
-                    ChopWindingInPlace( &w2, newplane, newplane[3], 0.1f );
-                    if (!w2) {
-                        Com_DPrintf("WARNING: CM_AddFacetBevels... invalid bevel\n");
+                    let mut w2 = CopyWinding(&w);
+                    let mut newplane = planes[facet.borderPlanes[facet.numBorders as usize] as usize].plane;
+                    if !facet.borderInward[facet.numBorders as usize] {
+                        newplane = newplane.flip();
+                    }
+                    ChopWindingInPlace(&mut w2, newplane.normal, newplane.dist, 0.1);
+                    if w2.is_empty() {
+                        warn!("WARNING: CM_AddFacetBevels... invalid bevel\n");
                         continue;
                     }
-                    else {
-                        FreeWinding(w2);
-                    }
                     //
-                    facet.numBorders++;
+                    facet.numBorders += 1;
                     //already got a bevel
 //                  break;
                 }
             }
         }
     }
-    FreeWinding( w );
+    drop(w);
 
-#ifndef BSPC
-    //add opposite plane
-    facet.borderPlanes[facet.numBorders] = facet.surfacePlane;
-    facet.borderNoAdjust[facet.numBorders] = 0;
-    facet.borderInward[facet.numBorders] = true;
-    facet.numBorders++;
-#endif //BSPC
-
+    #[cfg(not(BSPC))] {
+        //add opposite plane
+        facet.borderPlanes[facet.numBorders as usize] = facet.surfacePlane;
+        facet.borderNoAdjust[facet.numBorders as usize] = false;
+        facet.borderInward[facet.numBorders as usize] = true;
+        facet.numBorders += 1;
+    }
 }
 
-typedef enum {
-    EN_TOP,
-    EN_RIGHT,
-    EN_BOTTOM,
-    EN_LEFT
-} edgeName_t;
+// was enum
+pub type edgeName_t = usize;
+pub const EN_TOP: edgeName_t = 0;
+pub const EN_RIGHT: edgeName_t = 1;
+pub const EN_BOTTOM: edgeName_t = 2;
+pub const EN_LEFT: edgeName_t = 3;
 
 /*
 ==================
 CM_PatchCollideFromGrid
 ==================
 */
-static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
-    int             i, j;
-    float           *p1, *p2, *p3;
-    MAC_STATIC int              gridPlanes[MAX_GRID_SIZE][MAX_GRID_SIZE][2];
-    facet_t         *facet;
-    int             borders[4];
-    int             noAdjust[4];
-
-    numPlanes = 0;
-    numFacets = 0;
+fn CM_PatchCollideFromGrid(grid: &mut cGrid_t) -> patchCollide_t {
+    let mut gridPlanes: GridPlanes = [[[0; 2]; MAX_GRID_SIZE]; MAX_GRID_SIZE];
+    let mut facets: Vec<facet_t> = Vec::new();
+    let mut planes: Vec<patchPlane_t> = Vec::new();
 
     // find the planes for each triangle of the grid
-    for ( i = 0 ; i < grid.width - 1 ; i++ ) {
-        for ( j = 0 ; j < grid.height - 1 ; j++ ) {
-            p1 = grid.points[i][j];
-            p2 = grid.points[i+1][j];
-            p3 = grid.points[i+1][j+1];
-            gridPlanes[i][j][0] = CM_FindPlane( p1, p2, p3 );
+    for i in 0..grid.width as usize - 1 {
+        for j in 0..grid.height as usize - 1 {
+            let p1 = grid.points[i][j];
+            let p2 = grid.points[i+1][j];
+            let p3 = grid.points[i+1][j+1];
+            gridPlanes[i][j][0] = CM_FindPlane(&mut planes, p1, p2, p3 ).unwrap() as i32;
 
-            p1 = grid.points[i+1][j+1];
-            p2 = grid.points[i][j+1];
-            p3 = grid.points[i][j];
-            gridPlanes[i][j][1] = CM_FindPlane( p1, p2, p3 );
+            let p1 = grid.points[i+1][j+1];
+            let p2 = grid.points[i][j+1];
+            let p3 = grid.points[i][j];
+            gridPlanes[i][j][1] = CM_FindPlane(&mut planes, p1, p2, p3 ).unwrap() as i32;
         }
     }
 
     // create the borders for each facet
-    for ( i = 0 ; i < grid.width - 1 ; i++ ) {
-        for ( j = 0 ; j < grid.height - 1 ; j++ ) {
+    for i in 0..grid.width as usize - 1 {
+        for j in 0..grid.height as usize - 1 {
+            let mut borders: [i32; 4] = [0; 4];
+            let mut noAdjust: [bool; 4] = [false; 4];
 
             borders[EN_TOP] = -1;
             if ( j > 0 ) {
@@ -1060,7 +1050,7 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
             }
             noAdjust[EN_TOP] = ( borders[EN_TOP] == gridPlanes[i][j][0] );
             if ( borders[EN_TOP] == -1 || noAdjust[EN_TOP] ) {
-                borders[EN_TOP] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 0 );
+                borders[EN_TOP] = CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 0 ).unwrap() as i32;
             }
 
             borders[EN_BOTTOM] = -1;
@@ -1071,7 +1061,7 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
             }
             noAdjust[EN_BOTTOM] = ( borders[EN_BOTTOM] == gridPlanes[i][j][1] );
             if ( borders[EN_BOTTOM] == -1 || noAdjust[EN_BOTTOM] ) {
-                borders[EN_BOTTOM] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 2 );
+                borders[EN_BOTTOM] = CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 2 ).unwrap() as i32;
             }
 
             borders[EN_LEFT] = -1;
@@ -1082,7 +1072,7 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
             }
             noAdjust[EN_LEFT] = ( borders[EN_LEFT] == gridPlanes[i][j][1] );
             if ( borders[EN_LEFT] == -1 || noAdjust[EN_LEFT] ) {
-                borders[EN_LEFT] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 3 );
+                borders[EN_LEFT] = CM_EdgePlaneNum( &mut planes, grid, &gridPlanes, i, j, 3 ).unwrap() as i32;
             }
 
             borders[EN_RIGHT] = -1;
@@ -1093,19 +1083,14 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
             }
             noAdjust[EN_RIGHT] = ( borders[EN_RIGHT] == gridPlanes[i][j][0] );
             if ( borders[EN_RIGHT] == -1 || noAdjust[EN_RIGHT] ) {
-                borders[EN_RIGHT] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 1 );
+                borders[EN_RIGHT] = CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 1 ).unwrap() as i32;
             }
-
-            if ( numFacets == MAX_FACETS ) {
-                Com_Error( ERR_DROP, "MAX_FACETS" );
-            }
-            facet = &facets[numFacets];
-            Com_Memset( facet, 0, sizeof( *facet ) );
 
             if ( gridPlanes[i][j][0] == gridPlanes[i][j][1] ) {
                 if ( gridPlanes[i][j][0] == -1 ) {
-                    continue;       // degenrate
+                    continue;       // degenerate
                 }
+                let mut facet = facet_t::default();
                 facet.surfacePlane = gridPlanes[i][j][0];
                 facet.numBorders = 4;
                 facet.borderPlanes[0] = borders[EN_TOP];
@@ -1116,69 +1101,70 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
                 facet.borderNoAdjust[2] = noAdjust[EN_BOTTOM];
                 facet.borderPlanes[3] = borders[EN_LEFT];
                 facet.borderNoAdjust[3] = noAdjust[EN_LEFT];
-                CM_SetBorderInward( facet, grid, gridPlanes, i, j, -1 );
-                if ( CM_ValidateFacet( facet ) ) {
-                    CM_AddFacetBevels( facet );
-                    numFacets++;
+                CM_SetBorderInward(&planes, &mut facet, grid, &gridPlanes, i, j, -1 );
+                if ( CM_ValidateFacet(&planes, &facet ) ) {
+                    CM_AddFacetBevels(&mut planes, &mut facet );
+                    facets.push(facet);
                 }
             } else {
                 // two seperate triangles
-                facet.surfacePlane = gridPlanes[i][j][0];
-                facet.numBorders = 3;
-                facet.borderPlanes[0] = borders[EN_TOP];
-                facet.borderNoAdjust[0] = noAdjust[EN_TOP];
-                facet.borderPlanes[1] = borders[EN_RIGHT];
-                facet.borderNoAdjust[1] = noAdjust[EN_RIGHT];
-                facet.borderPlanes[2] = gridPlanes[i][j][1];
-                if ( facet.borderPlanes[2] == -1 ) {
-                    facet.borderPlanes[2] = borders[EN_BOTTOM];
+                {
+                    let mut facet = facet_t::default();
+                    facet.surfacePlane = gridPlanes[i][j][0];
+                    facet.numBorders = 3;
+                    facet.borderPlanes[0] = borders[EN_TOP];
+                    facet.borderNoAdjust[0] = noAdjust[EN_TOP];
+                    facet.borderPlanes[1] = borders[EN_RIGHT];
+                    facet.borderNoAdjust[1] = noAdjust[EN_RIGHT];
+                    facet.borderPlanes[2] = gridPlanes[i][j][1];
                     if ( facet.borderPlanes[2] == -1 ) {
-                        facet.borderPlanes[2] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 4 );
+                        facet.borderPlanes[2] = borders[EN_BOTTOM];
+                        if ( facet.borderPlanes[2] == -1 ) {
+                            facet.borderPlanes[2] = CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 4 ).unwrap() as i32;
+                        }
+                    }
+                    CM_SetBorderInward(&planes, &mut facet, grid, &gridPlanes, i, j, 0 );
+                    if ( CM_ValidateFacet( &planes, &facet ) ) {
+                        CM_AddFacetBevels( &mut planes, &mut facet );
+                        facets.push(facet);
                     }
                 }
-                CM_SetBorderInward( facet, grid, gridPlanes, i, j, 0 );
-                if ( CM_ValidateFacet( facet ) ) {
-                    CM_AddFacetBevels( facet );
-                    numFacets++;
-                }
 
-                if ( numFacets == MAX_FACETS ) {
-                    Com_Error( ERR_DROP, "MAX_FACETS" );
-                }
-                facet = &facets[numFacets];
-                Com_Memset( facet, 0, sizeof( *facet ) );
+                {
+                    let mut facet = facet_t::default();
 
-                facet.surfacePlane = gridPlanes[i][j][1];
-                facet.numBorders = 3;
-                facet.borderPlanes[0] = borders[EN_BOTTOM];
-                facet.borderNoAdjust[0] = noAdjust[EN_BOTTOM];
-                facet.borderPlanes[1] = borders[EN_LEFT];
-                facet.borderNoAdjust[1] = noAdjust[EN_LEFT];
-                facet.borderPlanes[2] = gridPlanes[i][j][0];
-                if ( facet.borderPlanes[2] == -1 ) {
-                    facet.borderPlanes[2] = borders[EN_TOP];
+                    facet.surfacePlane = gridPlanes[i][j][1];
+                    facet.numBorders = 3;
+                    facet.borderPlanes[0] = borders[EN_BOTTOM];
+                    facet.borderNoAdjust[0] = noAdjust[EN_BOTTOM];
+                    facet.borderPlanes[1] = borders[EN_LEFT];
+                    facet.borderNoAdjust[1] = noAdjust[EN_LEFT];
+                    facet.borderPlanes[2] = gridPlanes[i][j][0];
                     if ( facet.borderPlanes[2] == -1 ) {
-                        facet.borderPlanes[2] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 5 );
+                        facet.borderPlanes[2] = borders[EN_TOP];
+                        if ( facet.borderPlanes[2] == -1 ) {
+                            facet.borderPlanes[2] = CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 5 ).unwrap() as i32;
+                        }
                     }
-                }
-                CM_SetBorderInward( facet, grid, gridPlanes, i, j, 1 );
-                if ( CM_ValidateFacet( facet ) ) {
-                    CM_AddFacetBevels( facet );
-                    numFacets++;
+                    CM_SetBorderInward(&planes, &mut facet, grid, &gridPlanes, i, j, 1 );
+                    if ( CM_ValidateFacet( &planes, &facet ) ) {
+                        CM_AddFacetBevels( &mut planes, &mut facet );
+                        facets.push(facet);
+                    }
                 }
             }
         }
     }
 
     // copy the results out
-    pf->numPlanes = numPlanes;
-    pf->numFacets = numFacets;
-    pf->facets = Hunk_Alloc( numFacets * sizeof( *pf->facets ), h_high );
-    Com_Memcpy( pf->facets, facets, numFacets * sizeof( *pf->facets ) );
-    pf->planes = Hunk_Alloc( numPlanes * sizeof( *pf->planes ), h_high );
-    Com_Memcpy( pf->planes, planes, numPlanes * sizeof( *pf->planes ) );
+    patchCollide_t {
+        facets,
+        planes,
+        bounds: Default::default()
+    }
 }
 
+/*
 
 /*
 ===================
@@ -1765,10 +1751,10 @@ void CM_DrawDebugSurface( void (*drawPoly)(int color, int numPoints, float *poin
             }
             if ( w ) {
                 if ( facet == debugFacet ) {
-                    drawPoly( 4, w->numpoints, w->p[0] );
+                    drawPoly( 4, w.len(), w[0] );
                     //Com_Printf("blue facet has %d border planes\n", facet.numBorders);
                 } else {
-                    drawPoly( 1, w->numpoints, w->p[0] );
+                    drawPoly( 1, w.len(), w[0] );
                 }
                 FreeWinding( w );
             }

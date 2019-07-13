@@ -2,6 +2,7 @@
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 #![allow(unused_macros)]
+#![allow(unused_parens)]
 
 macro_rules! expand_axis {
     ($axis:ident) => {};
