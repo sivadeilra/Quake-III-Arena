@@ -275,3 +275,9 @@ impl vec4_t {
         }
     }
 }
+
+#[derive(Copy, Clone, Debug)]
+pub struct vec3_bounds {
+    pub mins: vec3_t,
+    pub maxs: vec3_t,
+}

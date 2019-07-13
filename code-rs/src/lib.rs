@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
+#![allow(unused_macros)]
 
 macro_rules! expand_axis {
     ($axis:ident) => {};
@@ -16,6 +17,13 @@ macro_rules! for_each_axis {
         expand_axis!(z $($t)*)
     }
 }
+
+macro_rules! todo_type {
+    ($name:ident) => {
+        pub type $name = ();
+    }
+}
+
 
 pub mod perf;
 pub mod qcommon;

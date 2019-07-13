@@ -1,5 +1,6 @@
 *.obj
 *.vcxproj.user
+*.res
 .vs
 Debug/
 Debug_TA/
