@@ -22,9 +22,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #![allow(non_upper_case_globals)]
 
-use crate::qcommon::cm_polylib::*;
 use crate::is_close_to;
 use crate::prelude::*;
+use crate::qcommon::cm_polylib::*;
 use log::warn;
 use std::mem::swap;
 
@@ -719,38 +719,46 @@ fn CM_EdgePlaneNum(
 CM_SetBorderInward
 ===================
 */
-fn CM_SetBorderInward(planes: &[patchPlane_t], facet: &mut facet_t, grid: &cGrid_t, _gridPlanes: &GridPlanes, i: usize, j: usize, which: i32) {
+fn CM_SetBorderInward(
+    planes: &[patchPlane_t],
+    facet: &mut facet_t,
+    grid: &cGrid_t,
+    _gridPlanes: &GridPlanes,
+    i: usize,
+    j: usize,
+    which: i32,
+) {
     let points: [vec3_t; 4];
     let numPoints: usize;
     match which {
         -1 => {
             points = [
                 grid.points[i][j],
-                grid.points[i+1][j],
-                grid.points[i+1][j+1],
-                grid.points[i][j+1]
+                grid.points[i + 1][j],
+                grid.points[i + 1][j + 1],
+                grid.points[i][j + 1],
             ];
             numPoints = 4;
-            }
+        }
         0 => {
             points = [
                 grid.points[i][j],
-                grid.points[i+1][j],
-                grid.points[i+1][j+1],
-                vec3_t::ORIGIN
+                grid.points[i + 1][j],
+                grid.points[i + 1][j + 1],
+                vec3_t::ORIGIN,
             ];
             numPoints = 3;
-            }
+        }
         1 => {
             points = [
-                grid.points[i+1][j+1],
-                grid.points[i][j+1],
+                grid.points[i + 1][j + 1],
+                grid.points[i][j + 1],
                 grid.points[i][j],
                 vec3_t::ORIGIN,
             ];
             numPoints = 3;
         }
-        _ => panic!("CM_SetBorderInward: bad parameter")
+        _ => panic!("CM_SetBorderInward: bad parameter"),
     }
 
     for k in 0..facet.numBorders as usize {
@@ -766,9 +774,9 @@ fn CM_SetBorderInward(planes: &[patchPlane_t], facet: &mut facet_t, grid: &cGrid
 
         if front != 0 && back == 0 {
             facet.borderInward[k] = true;
-        } else if  back != 0 && front == 0  {
+        } else if back != 0 && front == 0 {
             facet.borderInward[k] = false;
-        } else if  front == 0 && back == 0 {
+        } else if front == 0 && back == 0 {
             // flat side border
             facet.borderPlanes[k] = -1;
         } else {
@@ -796,18 +804,18 @@ If the facet isn't bounded by its borders, we screwed up.
 ==================
 */
 fn CM_ValidateFacet(planes: &[patchPlane_t], facet: &facet_t) -> bool {
-    if  facet.surfacePlane == -1  {
+    if facet.surfacePlane == -1 {
         return false;
     }
 
-    let plane = planes[ facet.surfacePlane as usize].plane;
-    let mut w = BaseWindingForPlane(plane.normal,  plane.dist);
+    let plane = planes[facet.surfacePlane as usize].plane;
+    let mut w = BaseWindingForPlane(plane.normal, plane.dist);
     for j in 0..facet.numBorders as usize {
-        if  facet.borderPlanes[j] == -1  {
+        if facet.borderPlanes[j] == -1 {
             return false;
         }
         let mut plane = planes[facet.borderPlanes[j] as usize].plane;
-        if  !facet.borderInward[j]  {
+        if !facet.borderInward[j] {
             plane.normal = -plane.normal;
             plane.dist = -plane.dist;
         }
@@ -815,14 +823,14 @@ fn CM_ValidateFacet(planes: &[patchPlane_t], facet: &facet_t) -> bool {
     }
 
     if w.is_empty() {
-        return false;      // winding was completely chopped away
+        return false; // winding was completely chopped away
     }
 
     // see if the facet is unreasonably large
     let bounds = WindingBounds(&w);
     for j in 0..3 {
         if bounds.maxs[j] - bounds.mins[j] > MAX_MAP_BOUNDS {
-            return false;      // we must be missing a plane
+            return false; // we must be missing a plane
         }
         if bounds.mins[j] >= MAX_MAP_BOUNDS {
             return false;
