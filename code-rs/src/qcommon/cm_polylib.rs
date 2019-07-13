@@ -28,11 +28,6 @@ pub type winding_slice = [vec3_t];
 
 pub const MAX_POINTS_ON_WINDING: usize = 64;
 
-pub const SIDE_FRONT: usize = 0;
-pub const SIDE_BACK: usize = 1;
-pub const SIDE_ON: usize = 2;
-pub const SIDE_CROSS: usize = 3;
-
 pub const CLIP_EPSILON: f32 = 0.1;
 
 pub const MAX_MAP_BOUNDS: f32 = 65535.0;
@@ -192,7 +187,7 @@ pub fn ReverseWinding(w: &winding_t) -> winding_t {
 
 struct ClipWindingInfo {
     dists: [f32; MAX_POINTS_ON_WINDING + 4],
-    sides: [usize; MAX_POINTS_ON_WINDING + 4],
+    sides: [Side; MAX_POINTS_ON_WINDING + 4],
     counts: [usize; 3],
 }
 fn get_clip_winding_info(
@@ -202,7 +197,7 @@ fn get_clip_winding_info(
     epsilon: vec_t,
 ) -> ClipWindingInfo {
     let mut dists = [0.0f32; MAX_POINTS_ON_WINDING + 4];
-    let mut sides = [0usize; MAX_POINTS_ON_WINDING + 4];
+    let mut sides = [Side(0); MAX_POINTS_ON_WINDING + 4];
     let mut counts: [usize; 3] = [0; 3];
 
     // determine sides for each point
@@ -217,7 +212,7 @@ fn get_clip_winding_info(
             SIDE_ON
         };
         sides[i] = this_side;
-        counts[this_side] += 1;
+        counts[this_side.index()] += 1;
     }
     sides[w.len()] = sides[0];
     dists[w.len()] = dists[0];
@@ -461,7 +456,7 @@ pub fn CheckWinding(w: &winding_t) {
 
 pub use winding_on_plane_side as WindingOnPlaneSide;
 
-pub fn winding_on_plane_side(w: &winding_slice, normal: vec3_t, dist: vec_t) -> usize {
+pub fn winding_on_plane_side(w: &winding_slice, normal: vec3_t, dist: vec_t) -> Side {
     let mut front = false;
     let mut back = false;
     for &p in w.iter() {

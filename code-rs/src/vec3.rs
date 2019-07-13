@@ -58,9 +58,29 @@ impl vec3_t {
             z: f(a.z, b.z, c.z),
         }
     }
+
+    pub fn mid(self: vec3_t, b: vec3_t) -> vec3_t {
+        (self + b) * 0.5
+    }
+
+    pub fn is_close_to(self, other: vec3_t, epsilon: vec_t) -> bool {
+        let d = self - other;
+        d.x.abs() < epsilon && d.y.abs() < epsilon && d.z.abs() < epsilon
+    }
 }
 
-use std::ops::{Add, AddAssign, Index, IndexMut, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Index, IndexMut, Mul, MulAssign, Sub, SubAssign};
+
+impl std::ops::Neg for vec3_t {
+    type Output = vec3_t;
+    fn neg(self) -> Self::Output {
+        vec3_t {
+            x: -self.x,
+            y: -self.y,
+            z: -self.z,
+        }
+    }
+}
 
 impl Index<usize> for vec3_t {
     type Output = vec_t;
@@ -120,6 +140,28 @@ impl SubAssign<vec3_t> for vec3_t {
         self.x -= other.x;
         self.y -= other.y;
         self.z -= other.z;
+    }
+}
+
+impl Mul<vec_t> for vec3_t {
+    type Output = vec3_t;
+    fn mul(self, other: vec_t) -> vec3_t {
+        vec3_t {
+            x: self.x * other,
+            y: self.y * other,
+            z: self.z * other,
+        }
+    }
+}
+
+impl Mul<vec3_t> for vec_t {
+    type Output = vec3_t;
+    fn mul(self, other: vec3_t) -> vec3_t {
+        vec3_t {
+            x: self * other.x,
+            y: self * other.y,
+            z: self * other.z,
+        }
     }
 }
 
@@ -213,4 +255,23 @@ pub fn CrossProduct(v1: vec3_t, v2: vec3_t) -> vec3_t {
 
 pub fn VectorLength(v: vec3_t) -> vec_t {
     v.dot(v).sqrt()
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct vec4_t {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub w: f32,
+}
+
+impl vec4_t {
+    pub fn from_vec3_w(v: vec3_t, w: vec_t) -> vec4_t {
+        vec4_t {
+            x: v.x,
+            y: v.y,
+            z: v.z,
+            w: w,
+        }
+    }
 }
