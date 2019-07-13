@@ -98,7 +98,7 @@ pub fn WindingArea(w: &winding_slice) -> vec_t {
 }
 
 // was: (w, mins, maxs)
-fn WindingBounds(w: &winding_t) -> Vec3MinMax {
+pub fn WindingBounds(w: &winding_t) -> Vec3MinMax {
     let mut mins = vec3_t {
         x: MAX_MAP_BOUNDS,
         y: MAX_MAP_BOUNDS,
