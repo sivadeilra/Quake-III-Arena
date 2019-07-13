@@ -1567,8 +1567,6 @@ fn CM_TraceThroughPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) {
 }
 
 /*
-
-/*
 =======================================================================
 
 POSITION TEST
@@ -1581,81 +1579,71 @@ POSITION TEST
 CM_PositionTestInPatchCollide
 ====================
 */
-bool CM_PositionTestInPatchCollide( traceWork_t *tw, const struct patchCollide_s *pc ) {
-    int i, j;
-    float offset, t;
-    patchPlane_t *planes;
-    facet_t *facet;
-    float plane[4];
-    vec3_t startp;
-
-    if (tw.isPoint) {
+pub fn CM_PositionTestInPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) -> bool {
+    if tw.isPoint {
         return false;
     }
     //
-    facet = pc->facets;
-    for ( i = 0 ; i < pc->numFacets ; i++, facet++ ) {
-        planes = &pc->planes[ facet.surfacePlane ];
-        VectorCopy(planes->plane, plane);
-        plane[3] = planes->plane[3];
-        if ( tw.sphere.use ) {
-            // adjust the plane distance apropriately for radius
-            plane[3] += tw.sphere.radius;
-
-            // find the closest point on the capsule to the plane
-            t = DotProduct( plane, tw.sphere.offset );
-            if ( t > 0 ) {
-                VectorSubtract( tw.start, tw.sphere.offset, startp );
-            }
-            else {
-                VectorAdd( tw.start, tw.sphere.offset, startp );
-            }
-        }
-        else {
-            offset = DotProduct( tw.offsets[ planes->signbits ], plane);
-            plane[3] -= offset;
-            VectorCopy( tw.start, startp );
-        }
-
-        if ( DotProduct( plane, startp ) - plane[3] > 0.0f ) {
-            continue;
-        }
-
-        for ( j = 0; j < facet.numBorders; j++ ) {
-            planes = &pc->planes[ facet.borderPlanes[j] ];
-            if (facet.borderInward[j]) {
-                VectorNegate(planes->plane, plane);
-                plane[3] = -planes->plane[3];
-            }
-            else {
-                VectorCopy(planes->plane, plane);
-                plane[3] = planes->plane[3];
-            }
-            if ( tw.sphere.use ) {
+    for facet in pc.facets.iter() {
+        {
+            let planes = &pc.planes[facet.surfacePlane as usize];
+            let startp;
+            let mut plane = planes.plane;
+            if tw.sphere.use_ {
                 // adjust the plane distance apropriately for radius
-                plane[3] += tw.sphere.radius;
+                plane.dist += tw.sphere.radius;
 
                 // find the closest point on the capsule to the plane
-                t = DotProduct( plane, tw.sphere.offset );
-                if ( t > 0.0f ) {
-                    VectorSubtract( tw.start, tw.sphere.offset, startp );
-                }
-                else {
-                    VectorAdd( tw.start, tw.sphere.offset, startp );
-                }
-            }
-            else {
-                // NOTE: this works even though the plane might be flipped because the bbox is centered
-                offset = DotProduct( tw.offsets[ planes->signbits ], plane);
-                plane[3] += fabs(offset);
-                VectorCopy( tw.start, startp );
+                let t = plane.normal.dot(tw.sphere.offset);
+                startp = if (t > 0.0) {
+                    tw.start - tw.sphere.offset
+                } else {
+                    tw.start + tw.sphere.offset
+                };
+            } else {
+                plane.dist -= tw.offsets[planes.signbits as usize].dot(plane.normal);
+                startp = tw.start;
             }
 
-            if ( DotProduct( plane, startp ) - plane[3] > 0.0f ) {
+            if plane.normal.dot(startp) - plane.dist > 0.0 {
+                continue;
+            }
+        }
+
+        let mut early_break = false;
+        for j in 0..facet.numBorders as usize {
+            let planes = &pc.planes[facet.borderPlanes[j] as usize];
+            let mut plane: plane_t = if facet.borderInward[j] {
+                planes.plane.flip()
+            } else {
+                planes.plane
+            };
+            let startp;
+            if tw.sphere.use_ {
+                // adjust the plane distance apropriately for radius
+                plane.dist += tw.sphere.radius;
+
+                // find the closest point on the capsule to the plane
+                let t = plane.normal.dot(tw.sphere.offset);
+                startp =
+                    if t > 0.0 {
+                        tw.start - tw.sphere.offset
+                    } else {
+                        tw.start + tw.sphere.offset
+                    };
+            } else {
+                // NOTE: this works even though the plane might be flipped because the bbox is centered
+                let offset = tw.offsets[planes.signbits as usize].dot(plane.normal);
+                plane.dist += offset.abs();
+                startp = tw.start;
+            }
+
+            if plane.normal.dot(startp) - plane.dist > 0.0 {
+                early_break = true;
                 break;
             }
         }
-        if (j < facet.numBorders) {
+        if early_break {
             continue;
         }
         // inside this patch facet
@@ -1663,6 +1651,8 @@ bool CM_PositionTestInPatchCollide( traceWork_t *tw, const struct patchCollide_s
     }
     return false;
 }
+
+/*
 
 /*
 =======================================================================
