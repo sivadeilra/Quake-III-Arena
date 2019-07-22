@@ -3,6 +3,7 @@ pub type vec_t = f32;
 // see game/q_shared.h
 
 #[derive(Copy, Clone, Debug, Default)]
+#[repr(C)]
 pub struct vec3_t {
     pub x: f32,
     pub y: f32,
@@ -38,6 +39,10 @@ impl vec3_t {
 
     pub fn length(self) -> vec_t {
         self.dot(self).sqrt()
+    }
+
+    pub fn length2(self) -> vec_t {
+        self.dot(self)
     }
 
     pub fn map(f: impl Fn(f32) -> f32, a: vec3_t) -> vec3_t {
@@ -206,6 +211,10 @@ pub fn VectorMA(v: vec3_t, s: f32, b: vec3_t) -> vec3_t {
 pub struct Vec3MinMax {
     pub mins: vec3_t,
     pub maxs: vec3_t,
+}
+
+pub fn VectorSet(x: vec_t, y: vec_t, z: vec_t) -> vec3_t {
+    vec3_t { x, y, z }
 }
 
 pub fn VectorNormalize_mut(v: &mut vec3_t) -> f32 {

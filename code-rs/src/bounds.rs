@@ -1,6 +1,6 @@
 use crate::prelude::*;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct vec3_bounds {
     pub mins: vec3_t,
     pub maxs: vec3_t,

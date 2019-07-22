@@ -20,21 +20,29 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 
+use std::ops::Range;
 use crate::prelude::*;
 use crate::qcommon::cm_patch::patchCollide_t;
-// use super::cm_polylib::*;
+use crate::qfiles::*;
 
 pub const MAX_SUBMODELS: usize = 256;
-pub const BOX_MODEL_HANDLE: usize = 255;
-pub const CAPSULE_MODEL_HANDLE: usize = 254;
+pub const BOX_MODEL_HANDLE: clipHandle_t = 255;
+pub const CAPSULE_MODEL_HANDLE: clipHandle_t = 254;
+
+pub type clipHandle_t = i32;
 
 #[derive(Clone)]
 pub struct cNode_t {
-    pub plane: *mut cplane_t,
+    // these are pointers into clipMap_t::planes[]
+    // pub plane: *mut cplane_t,
+
+    // index into clipMap_t::planes[]
+    pub plane_index: i32,
+
     pub children: [i32; 2], // negative numbers are leafs
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct cLeaf_t {
     pub cluster: i32,
     pub area: i32,
@@ -46,48 +54,90 @@ pub struct cLeaf_t {
     pub numLeafSurfaces: i32,
 }
 
+impl cLeaf_t {
+    pub fn leaf_brushes_index<'a>(&self, cm: &'a clipMap_t) -> &'a [i32] {
+        let start = self.firstLeafBrush as usize;
+        let count = self.numLeafBrushes as usize;
+        &cm.leafbrushes[start..start + count]
+    }
+
+    pub fn leaf_brushes<'a>(&self, cm: &'a clipMap_t) -> impl Iterator<Item = &'a cbrush_t> {
+        self.leaf_brushes_index(cm).iter().map(move |&i| &cm.brushes[i as usize])
+    }
+
+    pub fn leaf_surfaces<'a>(&self, cm: &'a clipMap_t) -> &'a [Option<Box<cPatch_t>>] {
+        &cm.surfaces[self.firstLeafSurface as usize..self.firstLeafSurface as usize + self.numLeafSurfaces as usize]
+    }
+    pub fn leaf_surfaces_mut<'a>(&self, cm: &'a mut clipMap_t) -> &'a mut [Option<Box<cPatch_t>>] {
+        &mut cm.surfaces[self.firstLeafSurface as usize..self.firstLeafSurface as usize + self.numLeafSurfaces as usize]
+    }
+}
+
 pub type cmodel_s = cmodel_t;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct cmodel_t {
     pub mins: vec3_t,
     pub maxs: vec3_t,
     pub leaf: cLeaf_t, // submodels don't reference the main tree
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct cbrushside_t {
-    pub plane: *mut cplane_t,
+    // pub plane: *mut cplane_t,
+    /// index into clipMap_t::planes
+    pub plane_num: i32,
+
     pub surfaceFlags: i32,
     pub shaderNum: i32,
 }
 
-#[derive(Clone, Debug)]
+impl cbrushside_t {
+    pub fn plane<'a>(&self, cm: &'a clipMap_t) -> &'a cplane_t {
+        &cm.planes[self.plane_num as usize]
+    }
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct cbrush_t {
     pub shaderNum: i32, // the shader that determined the contents
     pub contents: i32,
     pub bounds: vec3_bounds,
     pub numsides: i32,
-    pub sides: *mut cbrushside_t,
+
+    //
+    // pub sides: *mut cbrushside_t,
+    /// index into clipMap_t::brushsides
+    pub firstSide: i32,
+
     pub checkcount: i32, // to avoid repeated testings
 }
+
+impl cbrush_t {
+    pub fn sides<'a>(&self, cm: &'a clipMap_t) -> &'a [cbrushside_t] {
+        let start = self.firstSide as usize;
+        let count = self.numsides as usize;
+        &cm.brushsides[start..start + count]
+    }
+}
+
 
 #[derive(Clone, Debug)]
 pub struct cPatch_t {
     pub checkcount: i32, // to avoid repeated testings
     pub surfaceFlags: i32,
     pub contents: i32,
-    pub pc: *mut patchCollide_t,
+    // pub pc: *mut patchCollide_t,
+    pub pc: patchCollide_t,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct cArea_t {
     pub floodnum: i32,
     pub floodvalid: i32,
 }
 
-todo_type! {dshader_t}
-
+#[derive(Clone)]
 pub struct clipMap_t {
     pub name: String,
 
@@ -103,18 +153,52 @@ pub struct clipMap_t {
 
     pub numClusters: i32,
     pub clusterBytes: i32,
-    pub visibility: *mut u8,
+    pub visibility: Vec<u8>,
     pub vised: bool, // if false, visibility is just a single cluster of ffs
 
     pub entityString: String,
 
+    // this gets reused / rewritten many times
     pub areas: Vec<cArea_t>,
-    pub areaPortals: *mut i32, // [ numAreas*numAreas ] reference counts
+    pub areaPortals: Vec<i32>, // [ numAreas*numAreas ] reference counts
 
-    pub surfaces: Vec<*mut cPatch_t>, // non-patches will be NULL
+    pub surfaces: Vec<Option<Box<cPatch_t>>>, // non-patches will be NULL
 
     pub floodvalid: i32,
     pub checkcount: i32, // incremented on each trace
+
+    // these were globals
+    pub box_model: cmodel_t,
+    // pub box_planes: Vec<cplane_t>,
+    // pub box_brush: Vec<cbrush_t>,
+    /// index into Self::brushes for box_brush
+    pub box_brush_index: usize,
+
+    /// range in Self::planes where box_planes is
+    pub box_planes_range: Range<usize>,
+}
+
+pub struct ClipMapVis {
+    pub numClusters: i32,
+    pub clusterBytes: i32,
+    pub visibility: Vec<u8>,
+    pub vised: bool, // if false, visibility is just a single cluster of ffs
+}
+
+impl clipMap_t {
+    pub fn box_brush(&self) -> &cbrush_t {
+        &self.brushes[self.box_brush_index]
+    }
+    pub fn box_brush_mut(&mut self) -> &mut cbrush_t {
+        &mut self.brushes[self.box_brush_index]
+    }
+
+    pub fn box_planes(&self) -> &[cplane_t] {
+        &self.planes[self.box_planes_range.clone()]
+    }
+    pub fn box_planes_mut(&mut self) -> &mut [cplane_t] {
+        &mut self.planes[self.box_planes_range.clone()]
+    }
 }
 
 // keep 1/8 unit away to keep the position valid before network snapping
@@ -125,10 +209,10 @@ pub const SURFACE_CLIP_EPSILON: f32 = 0.125;
 extern  clipMap_t   cm;
 extern  i32         c_pointcontents;
 extern  i32         c_traces, c_brush_traces, c_patch_traces;
-extern  cvar_t      *cm_noAreas;
-extern  cvar_t      *cm_noCurves;
-extern  cvar_t      *cm_playerCurveClip;
 */
+pub static cm_noAreas: cvar_t = cvar_t::new("cm_noAreas");
+pub static cm_noCurves: cvar_t = cvar_t::new("cm_noCurves");
+pub static cm_playerCurveClip: cvar_t = cvar_t::new("cm_playerCurveClip");
 
 // cm_test.c
 
@@ -158,10 +242,14 @@ pub struct traceWork_t {
 pub type leafList_s = leafList_t;
 pub struct leafList_t {
     pub count: i32,
+
     pub maxcount: i32,
     pub overflowed: bool,
-    pub list: *mut i32,
+    // should list be &[i32]?, with maxcount being its length?
+    //    pub list: *mut i32,
     pub bounds: vec3_bounds,
     pub lastLeaf: i32, // for overflows where each leaf can't be stored individually
-    pub storeLeafs: fn(ll: *mut leafList_s, nodenum: i32),
+
+                       // this is now passed as a separate parameter, impl Fn(i32)
+                       //    pub storeLeafs: fn(ll: *mut leafList_s, nodenum: i32),
 }

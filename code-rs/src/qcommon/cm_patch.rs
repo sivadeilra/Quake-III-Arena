@@ -1433,12 +1433,7 @@ fn CM_CheckFacetPlane(
     return Output { result: true, hit };
 }
 
-/*
-====================
-CM_TraceThroughPatchCollide
-====================
-*/
-fn CM_TraceThroughPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) {
+pub fn CM_TraceThroughPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) {
     if tw.isPoint {
         CM_TracePointThroughPatchCollide(tw, pc);
         return;

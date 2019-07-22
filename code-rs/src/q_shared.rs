@@ -316,12 +316,14 @@ typedef int     clipHandle_t;
 #define MAX_QINT            0x7fffffff
 #define MIN_QINT            (-MAX_QINT-1)
 
+*/
 
 // angle indexes
-#define PITCH               0       // up / down
-#define YAW                 1       // left / right
-#define ROLL                2       // fall over
+pub const PITCH: usize = 0; // up / down
+pub const YAW: usize = 1; // left / right
+pub const ROLL: usize = 2; // fall over
 
+/*
 // the game guarantees that no string from the network will ever
 // exceed MAX_STRING_CHARS
 #define MAX_STRING_CHARS    1024    // max length of a string passed to Cmd_TokenizeString
@@ -962,34 +964,36 @@ COLLISION DETECTION
 
 #include "surfaceflags.h"           // shared with the q3map utility
 
+*/
+
+
 // plane types are used to speed some tests
 // 0-2 are axial planes
-#define PLANE_X         0
-#define PLANE_Y         1
-#define PLANE_Z         2
-#define PLANE_NON_AXIAL 3
+pub type PLANE_TYPE = u8;
+pub const PLANE_X         :PLANE_TYPE = 0;
+pub const PLANE_Y         :PLANE_TYPE = 1;
+pub const PLANE_Z         :PLANE_TYPE = 2;
+pub const PLANE_NON_AXIAL :PLANE_TYPE = 3;
 
 
-/*
-=================
-PlaneTypeForNormal
-=================
-*/
-
-#define PlaneTypeForNormal(x) (x[0] == 1.0 ? PLANE_X : (x[1] == 1.0 ? PLANE_Y : (x[2] == 1.0 ? PLANE_Z : PLANE_NON_AXIAL) ) )
-*/
+pub fn PlaneTypeForNormal(x: vec3_t) -> PLANE_TYPE {
+    if x[0] == 1.0 { PLANE_X }
+    else if x[1] == 1.0 { PLANE_Y }
+    else if x[2] == 1.0 { PLANE_Z }
+    else { PLANE_NON_AXIAL }
+}
 
 // plane_t structure
 // !!! if this is changed, it must be changed in asm code too !!!
 pub type cplane_s = cplane_t;
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]
 pub struct cplane_t {
     pub normal: vec3_t,
     pub dist: f32,
     pub type_: u8,    // for fast side tests: 0,1,2 = axial, 3 = nonaxial
     pub signbits: u8, // signx + (signy<<1) + (signz<<2), used as lookup during collision
-    pub pad: [u8; 2],
+//    pub pad: [u8; 2],
 }
 
 // a trace is returned when a box is swept through the world

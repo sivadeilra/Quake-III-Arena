@@ -26,14 +26,23 @@ macro_rules! todo_type {
 }
 
 pub mod bounds;
+pub mod cvar;
+pub mod game;
+pub mod math;
 pub mod perf;
+pub mod q_math;
 pub mod q_shared;
 pub mod qcommon;
+pub mod qfiles;
 pub mod vec3;
+pub mod zerocopy;
 
 pub mod prelude {
     pub use crate::bounds::*;
+    pub use crate::cvar::*;
+    pub use crate::math::*;
     pub use crate::num_utils::*;
+    pub use crate::q_math::*;
     pub use crate::q_shared::*;
     pub use crate::side::*;
     pub use crate::vec3::*;
@@ -70,5 +79,20 @@ pub mod num_utils {
         N: PartialEq,
     {
         n % N::from(2u8) != N::from(0u8)
+    }
+
+    pub fn fmin(a: f32, b: f32) -> f32 {
+        if b < a {
+            b
+        } else {
+            a
+        }
+    }
+    pub fn fmax(a: f32, b: f32) -> f32 {
+        if b > a {
+            b
+        } else {
+            a
+        }
     }
 }
