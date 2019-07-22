@@ -86,6 +86,7 @@ impl plane_t {
 
     // TODO: Figure out the right name for this. This pattern happens over and over, so it's clearly
     // a fundamental operation.
+    // distance_to() ?
     pub fn project_near(&self, v: vec3_t) -> f32 {
         self.normal.dot(v) - self.dist
     }

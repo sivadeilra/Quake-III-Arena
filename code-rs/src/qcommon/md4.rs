@@ -19,7 +19,7 @@ RSA Data Security, Inc. makes no representations concerning either the merchanta
 These notices must be retained in any copies of any part of this documentation and/or software. */
 
 /* MD4 context. */
-struct MD4_CTX {
+pub struct MD4_CTX {
     state: [u32; 4],  /* state (ABCD) */
     count: u64,       /* number of bits, modulo 2^64 (lsb first) */
     buffer: [u8; 64], /* input buffer */
@@ -96,7 +96,7 @@ pub fn MD4Init() -> MD4_CTX {
     MD4_CTX {
         count: 0,
         state: [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476],
-        buffer: [0; 64]
+        buffer: [0; 64],
     }
 }
 

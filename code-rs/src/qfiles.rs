@@ -508,7 +508,6 @@ pub struct dshader_t {
 }
 unsafe impl FromBytes for dshader_t {}
 
-
 // planes x^1 is allways the opposite of plane x
 
 #[repr(C)]
@@ -553,7 +552,6 @@ pub struct dbrushside_t {
     pub shaderNum: i32,
 }
 unsafe impl FromBytes for dbrushside_t {}
-
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]

@@ -20,8 +20,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 
-use crate::qcommon::cm_load::CM_ClipHandleToModel;
 use crate::prelude::*;
+use crate::qcommon::cm_load::CM_ClipHandleToModel;
 use crate::qcommon::cm_local::*;
 
 pub fn CM_PointLeafnum_r(cm: &clipMap_t, p: vec3_t, mut num: i32) -> i32 {
@@ -108,8 +108,6 @@ fn CM_BoxLeafnums(
     let mut ll = leafList_t {
         bounds: vec3_bounds { mins, maxs },
         count: 0,
-        maxcount: list.len() as i32,
-        // list: list,
         lastLeaf: 0,
         overflowed: false,
     };
@@ -123,15 +121,15 @@ fn CM_BoxLeafnums(
             ll.lastLeaf = leafNum;
         }
 
-        if ll.count >= ll.maxcount {
+        if ll.count < list.len() {
+            list[ll.count as usize] = leafNum;
+            ll.count += 1;
+        } else {
             ll.overflowed = true;
-            return;
         }
-        list[ll.count as usize] = leafNum;
-        ll.count += 1;
     });
 
-    (ll.count, ll.lastLeaf)
+    (ll.count as i32, ll.lastLeaf)
 }
 
 /// `list` returns a list of cbrush_t indices (in cm.leafbrushes)
@@ -141,7 +139,6 @@ fn CM_BoxBrushes(cm: &mut clipMap_t, mins: vec3_t, maxs: vec3_t, list: &mut [i32
     let mut ll = leafList_t {
         bounds: vec3_bounds { mins, maxs },
         count: 0,
-        maxcount: list.len() as i32,
         //list: (void *)list,
         //storeLeafs: CM_StoreBrushes,
         lastLeaf: 0,
@@ -166,12 +163,12 @@ fn CM_BoxBrushes(cm: &mut clipMap_t, mins: vec3_t, maxs: vec3_t, list: &mut [i32
             if any_bounds_misordered {
                 continue;
             }
-            if ll.count >= ll.maxcount {
+            if ll.count < list.len() {
+                list[ll.count] = brushnum;
+                ll.count += 1;
+            } else {
                 ll.overflowed = true;
-                return;
             }
-            list[ll.count as usize] = brushnum;
-            ll.count += 1;
         }
         /*
         #if 0
@@ -185,7 +182,7 @@ fn CM_BoxBrushes(cm: &mut clipMap_t, mins: vec3_t, maxs: vec3_t, list: &mut [i32
         #endif
         */
     });
-    ll.count
+    ll.count as i32
 }
 
 //====================================================================

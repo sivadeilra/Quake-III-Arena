@@ -1,3 +1,6 @@
+use crate::num_utils::fmin;
+use std::ops::{Add, AddAssign, Index, IndexMut, Mul, Sub, SubAssign};
+
 pub type vec_t = f32;
 
 // see game/q_shared.h
@@ -45,11 +48,11 @@ impl vec3_t {
         self.dot(self)
     }
 
-    pub fn map(f: impl Fn(f32) -> f32, a: vec3_t) -> vec3_t {
+    pub fn map(self, f: impl Fn(f32) -> f32) -> vec3_t {
         vec3_t {
-            x: f(a.x),
-            y: f(a.y),
-            z: f(a.z),
+            x: f(self.x),
+            y: f(self.y),
+            z: f(self.z),
         }
     }
 
@@ -76,9 +79,22 @@ impl vec3_t {
         let d = self - other;
         d.x.abs() < epsilon && d.y.abs() < epsilon && d.z.abs() < epsilon
     }
-}
 
-use std::ops::{Add, AddAssign, Index, IndexMut, Mul, Sub, SubAssign};
+    pub fn min(self, other: vec3_t) -> vec3_t {
+        vec3_t {
+            x: fmin(self.x, other.x),
+            y: fmin(self.y, other.y),
+            z: fmin(self.z, other.z),
+        }
+    }
+    pub fn max(self, other: vec3_t) -> vec3_t {
+        vec3_t {
+            x: fmin(self.x, other.x),
+            y: fmin(self.y, other.y),
+            z: fmin(self.z, other.z),
+        }
+    }
+}
 
 impl std::ops::Neg for vec3_t {
     type Output = vec3_t;

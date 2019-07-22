@@ -966,21 +966,24 @@ COLLISION DETECTION
 
 */
 
-
 // plane types are used to speed some tests
 // 0-2 are axial planes
 pub type PLANE_TYPE = u8;
-pub const PLANE_X         :PLANE_TYPE = 0;
-pub const PLANE_Y         :PLANE_TYPE = 1;
-pub const PLANE_Z         :PLANE_TYPE = 2;
-pub const PLANE_NON_AXIAL :PLANE_TYPE = 3;
-
+pub const PLANE_X: PLANE_TYPE = 0;
+pub const PLANE_Y: PLANE_TYPE = 1;
+pub const PLANE_Z: PLANE_TYPE = 2;
+pub const PLANE_NON_AXIAL: PLANE_TYPE = 3;
 
 pub fn PlaneTypeForNormal(x: vec3_t) -> PLANE_TYPE {
-    if x[0] == 1.0 { PLANE_X }
-    else if x[1] == 1.0 { PLANE_Y }
-    else if x[2] == 1.0 { PLANE_Z }
-    else { PLANE_NON_AXIAL }
+    if x[0] == 1.0 {
+        PLANE_X
+    } else if x[1] == 1.0 {
+        PLANE_Y
+    } else if x[2] == 1.0 {
+        PLANE_Z
+    } else {
+        PLANE_NON_AXIAL
+    }
 }
 
 // plane_t structure
@@ -991,13 +994,19 @@ pub type cplane_s = cplane_t;
 pub struct cplane_t {
     pub normal: vec3_t,
     pub dist: f32,
-    pub type_: u8,    // for fast side tests: 0,1,2 = axial, 3 = nonaxial
+    pub type_: u8, // for fast side tests: 0,1,2 = axial, 3 = nonaxial
     pub signbits: u8, // signx + (signy<<1) + (signz<<2), used as lookup during collision
-//    pub pad: [u8; 2],
+                   //    pub pad: [u8; 2],
+}
+
+impl cplane_t {
+    pub fn distance_to(&self, v: vec3_t) -> f32 {
+        self.normal.dot(v) - self.dist
+    }
 }
 
 // a trace is returned when a box is swept through the world
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]
 pub struct trace_t {
     pub allsolid: bool,    // if true, plane is not valid

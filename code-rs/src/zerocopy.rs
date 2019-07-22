@@ -39,7 +39,6 @@ pub fn slice_from_bytes<T: FromBytes>(bytes: &[u8]) -> &[T] {
     }
 }
 
-
 pub fn to_bytes<T: ToBytes>(t: &T) -> &[u8] {
     unsafe { to_bytes_unsafe(t) }
 }
@@ -55,5 +54,3 @@ pub fn slice_to_bytes<T: ToBytes>(s: &[T]) -> &[u8] {
 pub unsafe fn slice_to_bytes_unsafe<T>(s: &[T]) -> &[u8] {
     core::slice::from_raw_parts::<u8>(s.as_ptr() as *const u8, s.len() * core::mem::size_of::<T>())
 }
-
-

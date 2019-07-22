@@ -22,11 +22,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // cmodel.c -- model loading
 
 use crate::game::surfaceflags::CONTENTS_BODY;
-use crate::qcommon::md4::Com_BlockChecksum;
 use crate::prelude::*;
 use crate::qcommon::cm_local::*;
 use crate::qcommon::cm_patch::*;
 use crate::qcommon::cm_test::*;
+use crate::qcommon::md4::Com_BlockChecksum;
 use crate::qfiles::*;
 use crate::zerocopy::*;
 use log::debug;
@@ -95,12 +95,12 @@ cvar_t      *cm_playerCurveClip;
 ===============================================================================
 */
 
-struct FileLoader<'a> {
+pub struct FileLoader<'a> {
     data: &'a [u8],
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum Error {
+pub enum Error {
     BadFileRange,
     RequiredLumpEmpty,
     Msg(&'static str),
@@ -134,7 +134,8 @@ impl<'a> FileLoader<'a> {
 }
 
 pub fn CMod_LoadShaders(lump: lump_t, file: &FileLoader) -> Result<Vec<dshader_t>, Error> {
-    Ok(slice_from_bytes::<dshader_t>(file.get_lump_required(lump)?).iter()
+    Ok(slice_from_bytes::<dshader_t>(file.get_lump_required(lump)?)
+        .iter()
         .map(|in_| dshader_t {
             shader: in_.shader,
             contentFlags: LittleLong(in_.contentFlags),
@@ -143,10 +144,7 @@ pub fn CMod_LoadShaders(lump: lump_t, file: &FileLoader) -> Result<Vec<dshader_t
         .collect())
 }
 
-pub fn CMod_LoadSubmodels(
-    lump: lump_t,
-    file: &FileLoader,
-) -> Result<Vec<cmodel_t>, Error> {
+pub fn CMod_LoadSubmodels(lump: lump_t, file: &FileLoader) -> Result<Vec<cmodel_t>, Error> {
     let in_ = file.get_lump_required_as_slice::<dmodel_t>(lump)?;
     if in_.len() > MAX_SUBMODELS {
         return Err(Error::Msg("MAX_SUBMODELS exceeded"));
@@ -200,16 +198,14 @@ pub fn CMod_LoadSubmodels(
         .collect())
 }
 
-pub fn CMod_LoadNodes(
-    lump: lump_t,
-    file: &FileLoader,
-) -> Result<Vec<cNode_t>, Error> {
+pub fn CMod_LoadNodes(lump: lump_t, file: &FileLoader) -> Result<Vec<cNode_t>, Error> {
     let in_ = file.get_lump_required_as_slice::<dnode_t>(lump)?;
     if in_.is_empty() {
         return Err(Error::Str("Map has no nodes"));
     }
 
-    Ok(in_.iter()
+    Ok(in_
+        .iter()
         .map(|in_| cNode_t {
             plane_index: LittleLong(in_.planeNum),
             children: [LittleLong(in_.children[0]), LittleLong(in_.children[1])],
@@ -246,8 +242,7 @@ pub fn CMod_LoadBrushes(
     lump: lump_t,
     file: &FileLoader,
 ) -> Result<Vec<cbrush_t>, Error> {
-    file
-        .get_lump_required_as_slice::<dbrush_t>(lump)?
+    file.get_lump_required_as_slice::<dbrush_t>(lump)?
         .iter()
         .map(|in_| {
             let shaderNum = LittleLong(in_.shaderNum);
@@ -266,7 +261,7 @@ pub fn CMod_LoadBrushes(
                 shaderNum: shaderNum,
                 contents: shaders[shaderNum as usize].contentFlags,
                 bounds: brush_bounds,
-                checkcount: 0 // TODO: verify this
+                checkcount: 0, // TODO: verify this
             })
         })
         .collect::<Result<Vec<cbrush_t>, Error>>()
@@ -279,10 +274,7 @@ pub struct LoadLeafsOutput {
     pub num_area_portals: usize,
 }
 
-pub fn CMod_LoadLeafs(
-    lump: lump_t,
-    file: &FileLoader,
-) -> Result<LoadLeafsOutput, Error> {
+pub fn CMod_LoadLeafs(lump: lump_t, file: &FileLoader) -> Result<LoadLeafsOutput, Error> {
     let mut max_area: usize = 0;
     let mut max_cluster: usize = 0;
     let leafs: Vec<cLeaf_t> = file
@@ -314,7 +306,7 @@ pub fn CMod_LoadLeafs(
         leafs,
         num_areas,
         num_area_portals: num_areas * num_areas,
-        num_clusters
+        num_clusters,
     })
 }
 
@@ -352,14 +344,12 @@ pub fn CMod_LoadLeafBrushes(lump: lump_t, file: &FileLoader) -> Result<Vec<i32>,
         .collect())
 }
 
-pub fn CMod_LoadLeafSurfaces(
-    lump: lump_t,
-    file: &FileLoader,
-) -> Result<Vec<i32>, Error> {
+pub fn CMod_LoadLeafSurfaces(lump: lump_t, file: &FileLoader) -> Result<Vec<i32>, Error> {
     Ok(file
         .get_lump_required_as_slice::<i32>(lump)?
         .iter()
-        .map(|in_| LittleLong(*in_)).collect())
+        .map(|in_| LittleLong(*in_))
+        .collect())
 }
 
 pub fn CMod_LoadBrushSides(
@@ -367,8 +357,7 @@ pub fn CMod_LoadBrushSides(
     lump: lump_t,
     file: &FileLoader,
 ) -> Result<Vec<cbrushside_t>, Error> {
-    file
-        .get_lump_required_as_slice::<dbrushside_t>(lump)?
+    file.get_lump_required_as_slice::<dbrushside_t>(lump)?
         .iter()
         .map(|in_| {
             let plane_num = LittleLong(in_.planeNum);
@@ -391,11 +380,17 @@ pub fn CMod_LoadBrushSides(
 
 pub fn CMod_LoadEntityString(lump: lump_t, file: &FileLoader) -> Result<String, Error> {
     let bytes = file.get_lump(lump)?;
-    std::str::from_utf8(bytes).map_err(|_| Error::Str("Invalid entity string")).map(|s| s.to_string())
+    std::str::from_utf8(bytes)
+        .map_err(|_| Error::Str("Invalid entity string"))
+        .map(|s| s.to_string())
 }
 
 const VIS_HEADER: usize = 8;
-pub fn CMod_LoadVisibility(num_clusters: usize, lump: lump_t, file: &FileLoader) -> Result<ClipMapVis, Error> {
+pub fn CMod_LoadVisibility(
+    num_clusters: usize,
+    lump: lump_t,
+    file: &FileLoader,
+) -> Result<ClipMapVis, Error> {
     let in_ = file.get_lump(lump)?;
 
     if in_.is_empty() {
@@ -437,8 +432,7 @@ pub fn CMod_LoadPatches(
 
     // scan through all the surfaces, but only load patches,
     // not planar faces
-    in_
-        .iter()
+    in_.iter()
         .map(|in_| -> Result<Option<Box<cPatch_t>>, Error> {
             if LittleLong(in_.surfaceType) != MST_PATCH {
                 return Ok(None); // ignore other surfaces
@@ -473,7 +467,7 @@ pub fn CMod_LoadPatches(
                 contents: shader.contentFlags,
                 surfaceFlags: shader.surfaceFlags,
                 pc: pc,
-                checkcount: 0
+                checkcount: 0,
             })))
         })
         .collect()
@@ -497,7 +491,9 @@ fn CM_Checksum(header: &dheader_t, file: &FileLoader) -> Result<u32, Error> {
     checksums[8] = CM_LumpChecksum(header.lumps[LUMP_NODES], file)?;
     checksums[9] = CM_LumpChecksum(header.lumps[LUMP_SURFACES], file)?;
     checksums[10] = CM_LumpChecksum(header.lumps[LUMP_DRAWVERTS], file)?;
-    Ok(LittleLong_u32(Com_BlockChecksum(&slice_to_bytes(&checksums)[0.. 11 * 4])))
+    Ok(LittleLong_u32(Com_BlockChecksum(
+        &slice_to_bytes(&checksums)[0..11 * 4],
+    )))
 }
 
 /// Loads in the map and all submodels
@@ -572,7 +568,10 @@ pub fn CM_LoadMap(name: &str, clientload: bool, _checksum: &mut i32) -> Result<c
     // load into heap
     let shaders = CMod_LoadShaders(header.lumps[LUMP_SHADERS], &file)?;
     let LoadLeafsOutput {
-        leafs, num_areas, num_clusters, num_area_portals
+        leafs,
+        num_areas,
+        num_clusters,
+        num_area_portals,
     } = CMod_LoadLeafs(header.lumps[LUMP_LEAFS], &file)?;
     let leafbrushes = CMod_LoadLeafBrushes(header.lumps[LUMP_LEAFBRUSHES], &file)?;
     let leafsurfaces = CMod_LoadLeafSurfaces(header.lumps[LUMP_LEAFSURFACES], &file)?;
@@ -625,8 +624,7 @@ pub fn CM_LoadMap(name: &str, clientload: bool, _checksum: &mut i32) -> Result<c
         checkcount: 0,
 
         floodvalid: 0,
-        name: name.to_string()
-
+        name: name.to_string(),
     };
 
     // we are NOT freeing the file, because it is cached for the ref
@@ -713,16 +711,16 @@ pub fn CM_InitBoxHull(cm: &mut clipMap_t) {
         numsides: 6,
         firstSide: cm.brushsides.len() as i32,
         contents: CONTENTS_BODY,
-        .. Default::default()
+        ..Default::default()
     });
 
     let box_model = cmodel_t {
         leaf: cLeaf_t {
             numLeafBrushes: 1,
             firstLeafBrush: cm.leafbrushes.len() as i32,
-            .. Default::default()
+            ..Default::default()
         },
-        .. Default::default()
+        ..Default::default()
     };
 
     cm.leafbrushes.push(cm.brushes.len() as i32);
@@ -742,7 +740,7 @@ pub fn CM_InitBoxHull(cm: &mut clipMap_t) {
             0 => v3(1.0, 0.0, 0.0),
             1 => v3(0.0, 1.0, 0.0),
             2 => v3(0.0, 0.0, 1.0),
-            _ => panic!("invalid")
+            _ => panic!("invalid"),
         }
     }
 
@@ -755,7 +753,7 @@ pub fn CM_InitBoxHull(cm: &mut clipMap_t) {
             type_: i >> 1,
             signbits: 0,
             normal: normal_for_axis(i >> 1),
-            dist: 0.0
+            dist: 0.0,
         };
         SetPlaneSignbits(&mut p);
         cm.planes.push(p);
@@ -765,7 +763,7 @@ pub fn CM_InitBoxHull(cm: &mut clipMap_t) {
             type_: 3 + (i >> 1),
             signbits: 0,
             normal: -normal_for_axis(i >> 1),
-            dist: 0.0
+            dist: 0.0,
         };
         SetPlaneSignbits(&mut p);
         cm.planes.push(p);

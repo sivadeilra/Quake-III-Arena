@@ -20,10 +20,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 
-use std::ops::Range;
 use crate::prelude::*;
 use crate::qcommon::cm_patch::patchCollide_t;
 use crate::qfiles::*;
+use std::ops::Range;
 
 pub const MAX_SUBMODELS: usize = 256;
 pub const BOX_MODEL_HANDLE: clipHandle_t = 255;
@@ -42,6 +42,12 @@ pub struct cNode_t {
     pub children: [i32; 2], // negative numbers are leafs
 }
 
+impl cNode_t {
+    pub fn plane<'a>(&self, cm: &'a clipMap_t) -> &'a cplane_t {
+        &cm.planes[self.plane_index as usize]
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct cLeaf_t {
     pub cluster: i32,
@@ -55,21 +61,34 @@ pub struct cLeaf_t {
 }
 
 impl cLeaf_t {
-    pub fn leaf_brushes_index<'a>(&self, cm: &'a clipMap_t) -> &'a [i32] {
+    pub fn leaf_brushes_range(&self) -> Range<usize> {
         let start = self.firstLeafBrush as usize;
         let count = self.numLeafBrushes as usize;
-        &cm.leafbrushes[start..start + count]
+        start..start + count
+    }
+    pub fn leaf_brushes_index<'a>(&self, cm: &'a clipMap_t) -> &'a [i32] {
+        &cm.leafbrushes[self.leaf_brushes_range()]
     }
 
     pub fn leaf_brushes<'a>(&self, cm: &'a clipMap_t) -> impl Iterator<Item = &'a cbrush_t> {
-        self.leaf_brushes_index(cm).iter().map(move |&i| &cm.brushes[i as usize])
+        self.leaf_brushes_index(cm)
+            .iter()
+            .map(move |&i| &cm.brushes[i as usize])
+    }
+
+    pub fn leaf_surfaces_range(&self) -> Range<usize> {
+        self.firstLeafSurface as usize
+            ..self.firstLeafSurface as usize + self.numLeafSurfaces as usize
     }
 
     pub fn leaf_surfaces<'a>(&self, cm: &'a clipMap_t) -> &'a [Option<Box<cPatch_t>>] {
-        &cm.surfaces[self.firstLeafSurface as usize..self.firstLeafSurface as usize + self.numLeafSurfaces as usize]
+        &cm.surfaces[self.leaf_surfaces_range()]
     }
-    pub fn leaf_surfaces_mut<'a>(&self, cm: &'a mut clipMap_t) -> &'a mut [Option<Box<cPatch_t>>] {
-        &mut cm.surfaces[self.firstLeafSurface as usize..self.firstLeafSurface as usize + self.numLeafSurfaces as usize]
+    pub fn leaf_surfaces_mut<'a>(
+        &self,
+        cm_surfaces: &'a mut [Option<Box<cPatch_t>>],
+    ) -> &'a mut [Option<Box<cPatch_t>>] {
+        &mut cm_surfaces[self.leaf_surfaces_range()]
     }
 }
 
@@ -120,7 +139,6 @@ impl cbrush_t {
         &cm.brushsides[start..start + count]
     }
 }
-
 
 #[derive(Clone, Debug)]
 pub struct cPatch_t {
@@ -217,6 +235,7 @@ pub static cm_playerCurveClip: cvar_t = cvar_t::new("cm_playerCurveClip");
 // cm_test.c
 
 // Used for oriented capsule collision detection
+#[derive(Clone, Debug)]
 pub struct sphere_t {
     pub use_: bool,
     pub radius: f32,
@@ -241,15 +260,8 @@ pub struct traceWork_t {
 
 pub type leafList_s = leafList_t;
 pub struct leafList_t {
-    pub count: i32,
-
-    pub maxcount: i32,
+    pub count: usize,
     pub overflowed: bool,
-    // should list be &[i32]?, with maxcount being its length?
-    //    pub list: *mut i32,
     pub bounds: vec3_bounds,
     pub lastLeaf: i32, // for overflows where each leaf can't be stored individually
-
-                       // this is now passed as a separate parameter, impl Fn(i32)
-                       //    pub storeLeafs: fn(ll: *mut leafList_s, nodenum: i32),
 }
