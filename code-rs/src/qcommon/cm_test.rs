@@ -104,7 +104,7 @@ fn CM_BoxLeafnums(
     maxs: vec3_t,
     list: &mut [i32],
 ) -> (/*count*/ i32, /*lastLeaf*/ i32) {
-    client.checkcount += 1;
+    client.next_checkcount();
 
     let mut ll = leafList_t {
         bounds: vec3_bounds { mins, maxs },
@@ -141,7 +141,7 @@ fn CM_BoxBrushes(
     maxs: vec3_t,
     list: &mut [i32],
 ) -> i32 {
-    client.checkcount += 1;
+    client.next_checkcount();
 
     let mut ll = leafList_t {
         bounds: vec3_bounds { mins, maxs },

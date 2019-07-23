@@ -464,7 +464,6 @@ fn CMod_LoadPatches(
                 contents: shader.contentFlags,
                 surfaceFlags: shader.surfaceFlags,
                 pc: pc,
-                checkcount: 0,
             })))
         })
         .collect()

@@ -103,3 +103,9 @@ where
 {
     start..start + count
 }
+
+fn fill<T: Copy>(items: &mut [T], value: T) {
+    for ii in items.iter_mut() {
+        *ii = value;
+    }
+}

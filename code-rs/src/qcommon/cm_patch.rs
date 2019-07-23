@@ -26,6 +26,7 @@ use crate::is_close_to;
 use crate::prelude::*;
 use crate::qcommon::cm_local::*;
 use crate::qcommon::cm_polylib::*;
+use crate::qcommon::cm_trace::traceWork_t;
 use log::warn;
 use std::mem::swap;
 

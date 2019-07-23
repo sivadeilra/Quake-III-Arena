@@ -34,6 +34,21 @@ use crate::qcommon::cm_test::CM_BoxLeafnums_r;
 
 //#define CAPSULE_DEBUG
 
+pub struct traceWork_t {
+    pub start: vec3_t,
+    pub end: vec3_t,
+    pub size: [vec3_t; 2],    // size of the box being swept through the model
+    pub offsets: [vec3_t; 8], // [signbits][x] = either size[0][x] or size[1][x]
+    pub maxOffset: f32,       // longest corner length from origin
+    pub extents: vec3_t,      // greatest of abs(size[0]) and abs(size[1])
+    pub bounds: [vec3_t; 2],  // enclosing box of start and end surrounding by size
+    pub modelOrigin: vec3_t,  // origin of the model tracing through
+    pub contents: i32,        // ored contents of the model tracing through
+    pub isPoint: bool,        // optimized case
+    pub trace: trace_t,       // returned from trace call
+    pub sphere: sphere_t,     // sphere for oriendted capsule collision
+}
+
 /*
 ===============================================================================
 

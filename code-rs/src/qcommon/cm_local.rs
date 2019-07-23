@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 use crate::prelude::*;
 use crate::qcommon::cm_patch::patchCollide_t;
 use crate::qfiles::*;
+use crate::range_len;
 use std::ops::Range;
 
 pub const MAX_SUBMODELS: usize = 256;
@@ -62,37 +63,27 @@ pub struct cLeaf_t {
 
 impl cLeaf_t {
     pub fn leaf_brushes_range(&self) -> Range<usize> {
-        let start = self.firstLeafBrush as usize;
-        let count = self.numLeafBrushes as usize;
-        start..start + count
-    }
-    pub fn leaf_brushes_index<'a>(&self, cm: &'a clipMap_t) -> &'a [i32] {
-        &cm.leafbrushes[self.leaf_brushes_range()]
+        range_len(self.firstLeafBrush as usize, self.numLeafBrushes as usize)
     }
 
     pub fn leaf_brushes<'a>(&self, cm: &'a clipMap_t) -> impl Iterator<Item = &'a cbrush_t> {
-        self.leaf_brushes_index(cm)
+        let brushes = &cm.brushes;
+        cm.leafbrushes[self.leaf_brushes_range()]
             .iter()
-            .map(move |&i| &cm.brushes[i as usize])
+            .map(move |&i| &brushes[i as usize])
     }
 
     pub fn leaf_surfaces_range(&self) -> Range<usize> {
-        self.firstLeafSurface as usize
-            ..self.firstLeafSurface as usize + self.numLeafSurfaces as usize
+        range_len(
+            self.firstLeafSurface as usize,
+            self.numLeafSurfaces as usize,
+        )
     }
 
     pub fn leaf_surfaces<'a>(&self, cm: &'a clipMap_t) -> &'a [Option<Box<cPatch_t>>] {
         &cm.surfaces[self.leaf_surfaces_range()]
     }
-    pub fn leaf_surfaces_mut<'a>(
-        &self,
-        cm_surfaces: &'a mut [Option<Box<cPatch_t>>],
-    ) -> &'a mut [Option<Box<cPatch_t>>] {
-        &mut cm_surfaces[self.leaf_surfaces_range()]
-    }
 }
-
-pub type cmodel_s = cmodel_t;
 
 #[derive(Clone, Debug, Default)]
 pub struct cmodel_t {
@@ -103,7 +94,6 @@ pub struct cmodel_t {
 
 #[derive(Clone, Debug, Default)]
 pub struct cbrushside_t {
-    // pub plane: *mut cplane_t,
     /// index into clipMap_t::planes
     pub plane_num: i32,
 
@@ -124,11 +114,8 @@ pub struct cbrush_t {
     pub bounds: vec3_bounds,
     pub numsides: i32,
 
-    //
-    // pub sides: *mut cbrushside_t,
     /// index into clipMap_t::brushsides
     pub firstSide: i32,
-    //    pub checkcount: i32, // to avoid repeated testings
 }
 
 impl cbrush_t {
@@ -141,10 +128,8 @@ impl cbrush_t {
 
 #[derive(Clone, Debug)]
 pub struct cPatch_t {
-    pub checkcount: i32, // to avoid repeated testings
     pub surfaceFlags: i32,
     pub contents: i32,
-    // pub pc: *mut patchCollide_t,
     pub pc: patchCollide_t,
 }
 
@@ -194,15 +179,19 @@ pub struct clipMap_t {
     pub box_planes_range: Range<usize>,
 }
 
+type CheckCount = i32;
+const CHECK_COUNT_MAX: CheckCount = std::i32::MAX;
+
 #[derive(Clone)]
 pub struct ClipMapClient {
-    pub checkcount: i32, // incremented on each trace
+    /// incremented on each trace
+    checkcount: CheckCount,
 
     /// corresponds to clipMap_t::brushes
-    pub brushes_checkcount: Vec<i32>,
+    brushes_checkcount: Vec<CheckCount>,
 
     /// corresponds to clipMap_t::surfaces
-    pub patches_checkcount: Vec<i32>,
+    patches_checkcount: Vec<CheckCount>,
 }
 
 impl ClipMapClient {
@@ -214,12 +203,19 @@ impl ClipMapClient {
         }
     }
 
-    pub fn is_same_checkcount(&self, checkcount: i32) -> bool {
-        self.checkcount == checkcount
-    }
-
+    /// Increments the generation counter, which invalidates all previous checkcounts for brushes
+    /// and patches. This is effectively clearing a cache.
     pub fn next_checkcount(&mut self) {
-        self.checkcount = self.checkcount.wrapping_add(1);
+        use crate::fill;
+        if self.checkcount == CHECK_COUNT_MAX {
+            // Reset all checkcounts. Without this, it would be possible to accidentally use the
+            // wrong results.
+            fill(&mut self.brushes_checkcount, 0);
+            fill(&mut self.patches_checkcount, 0);
+            self.checkcount = 1;
+        } else {
+            self.checkcount += 1;
+        }
     }
 
     /// Returns true if the brush has ALREADY been checked.
@@ -291,22 +287,6 @@ pub struct sphere_t {
     pub offset: vec3_t,
 }
 
-pub struct traceWork_t {
-    pub start: vec3_t,
-    pub end: vec3_t,
-    pub size: [vec3_t; 2],    // size of the box being swept through the model
-    pub offsets: [vec3_t; 8], // [signbits][x] = either size[0][x] or size[1][x]
-    pub maxOffset: f32,       // longest corner length from origin
-    pub extents: vec3_t,      // greatest of abs(size[0]) and abs(size[1])
-    pub bounds: [vec3_t; 2],  // enclosing box of start and end surrounding by size
-    pub modelOrigin: vec3_t,  // origin of the model tracing through
-    pub contents: i32,        // ored contents of the model tracing through
-    pub isPoint: bool,        // optimized case
-    pub trace: trace_t,       // returned from trace call
-    pub sphere: sphere_t,     // sphere for oriendted capsule collision
-}
-
-pub type leafList_s = leafList_t;
 pub struct leafList_t {
     pub count: usize,
     pub overflowed: bool,
