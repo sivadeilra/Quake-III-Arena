@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 //! Model Loading
 
+use crate::encoding::get_le_i32;
 use crate::game::surfaceflags::CONTENTS_BODY;
 use crate::prelude::*;
 use crate::qcommon::cm_local::*;
@@ -215,7 +216,7 @@ fn CMod_LoadNodes(lump: lump_t, file: &FileLoader) -> Result<Vec<cNode_t>, Error
             plane_index: LittleLong(dnode.planeNum),
             children: [LittleLong(dnode.children[0]), LittleLong(dnode.children[1])],
         })
-        .collect::<Vec<cNode_t>>())
+        .collect())
 }
 
 fn check_index<T>(index: i32, items: &[T]) -> Result<usize, Error> {
@@ -257,7 +258,7 @@ fn CMod_LoadBrushes(
     };
     file.get_lump_required_as_slice::<dbrush_t>(lump)?
         .iter()
-        .map(|dbrush| {
+        .map(move |dbrush| {
             let shaderNum = LittleLong(dbrush.shaderNum);
             let shader = get_item_checked(shaderNum, shaders)?;
             let firstSide = LittleLong(dbrush.firstSide);
@@ -286,7 +287,7 @@ fn CMod_LoadLeafs(lump: lump_t, file: &FileLoader) -> Result<LoadLeafsOutput, Er
     let leafs: Vec<cLeaf_t> = file
         .get_lump_required_as_slice::<dleaf_t>(lump)?
         .iter()
-        .map(|dleaf| -> cLeaf_t {
+        .map(|dleaf| {
             let cluster = LittleLong(dleaf.cluster);
             let area = LittleLong(dleaf.area);
             max_area = max_area.max(area as usize);
@@ -322,17 +323,11 @@ fn CMod_LoadPlanes(lump: lump_t, file: &FileLoader) -> Result<Vec<cplane_t>, Err
         .iter()
         .map(|dplane| -> cplane_t {
             let normal = LittleVec3(dplane.normal);
-            let mut bits: u8 = 0;
-            for j in 0..3 {
-                if normal[j] < 0.0 {
-                    bits |= 1u8 << j;
-                }
-            }
             cplane_t {
-                normal: normal,
+                normal,
                 dist: LittleFloat(dplane.dist),
                 type_: PlaneTypeForNormal(normal),
-                signbits: bits,
+                signbits: get_sign_bits(normal),
             }
         })
         .collect())
@@ -403,9 +398,8 @@ fn CMod_LoadVisibility(
         return Err(Error::Str("Invalid vis lump"));
     }
 
-    let numClusters = LittleLong(*from_bytes::<i32>(&in_[0..4]));
-    let clusterBytes = LittleLong(*from_bytes::<i32>(&in_[4..8]));
-
+    let numClusters = get_le_i32(&in_[0..4]);
+    let clusterBytes = get_le_i32(&in_[4..8]);
     Ok(ClipMapVis {
         vised: true,
         numClusters: numClusters,
@@ -449,9 +443,7 @@ fn CMod_LoadPatches(
                 .iter_mut()
                 .zip(dv[first_vert..first_vert + c].iter())
             {
-                p[0] = LittleFloat(dv_p.xyz[0]);
-                p[1] = LittleFloat(dv_p.xyz[1]);
-                p[2] = LittleFloat(dv_p.xyz[2]);
+                *p = LittleVec3(dv_p.xyz);
             }
 
             // create the internal facet structure

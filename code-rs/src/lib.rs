@@ -109,3 +109,16 @@ fn fill<T: Copy>(items: &mut [T], value: T) {
         *ii = value;
     }
 }
+
+pub mod encoding {
+    pub fn get_le_u32(bytes: &[u8]) -> u32 {
+        (bytes[0] as u32) |
+        (bytes[1] as u32) << 8 |
+        (bytes[2] as u32) << 16 |
+        (bytes[3] as u32) << 24
+    }
+
+    pub fn get_le_i32(bytes: &[u8]) -> i32 {
+        get_le_u32(bytes) as i32
+    }
+}
