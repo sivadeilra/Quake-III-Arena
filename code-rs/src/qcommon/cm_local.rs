@@ -128,8 +128,7 @@ pub struct cbrush_t {
     // pub sides: *mut cbrushside_t,
     /// index into clipMap_t::brushsides
     pub firstSide: i32,
-
-    pub checkcount: i32, // to avoid repeated testings
+    //    pub checkcount: i32, // to avoid repeated testings
 }
 
 impl cbrush_t {
@@ -183,7 +182,6 @@ pub struct clipMap_t {
     pub surfaces: Vec<Option<Box<cPatch_t>>>, // non-patches will be NULL
 
     pub floodvalid: i32,
-    pub checkcount: i32, // incremented on each trace
 
     // these were globals
     pub box_model: cmodel_t,
@@ -194,6 +192,56 @@ pub struct clipMap_t {
 
     /// range in Self::planes where box_planes is
     pub box_planes_range: Range<usize>,
+}
+
+#[derive(Clone)]
+pub struct ClipMapClient {
+    pub checkcount: i32, // incremented on each trace
+
+    /// corresponds to clipMap_t::brushes
+    pub brushes_checkcount: Vec<i32>,
+
+    /// corresponds to clipMap_t::surfaces
+    pub patches_checkcount: Vec<i32>,
+}
+
+impl ClipMapClient {
+    pub fn new(cm: &clipMap_t) -> Self {
+        Self {
+            checkcount: 1,
+            brushes_checkcount: vec![0; cm.brushes.len()],
+            patches_checkcount: vec![0; cm.surfaces.len()],
+        }
+    }
+
+    pub fn is_same_checkcount(&self, checkcount: i32) -> bool {
+        self.checkcount == checkcount
+    }
+
+    pub fn next_checkcount(&mut self) {
+        self.checkcount = self.checkcount.wrapping_add(1);
+    }
+
+    /// Returns true if the brush has ALREADY been checked.
+    /// Returns false if the brush NEEDS to be checked. In this case, the checkcount for the brush
+    /// is also updated, so that the next check_brush() call will return true.
+    pub fn check_brush(&mut self, brush_num: usize) -> bool {
+        if self.brushes_checkcount[brush_num] == self.checkcount {
+            true
+        } else {
+            self.brushes_checkcount[brush_num] = self.checkcount;
+            false
+        }
+    }
+
+    pub fn check_patch(&mut self, patch_num: usize) -> bool {
+        if self.patches_checkcount[patch_num] == self.checkcount {
+            true
+        } else {
+            self.patches_checkcount[patch_num] = self.checkcount;
+            false
+        }
+    }
 }
 
 pub struct ClipMapVis {

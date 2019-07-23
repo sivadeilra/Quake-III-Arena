@@ -48,6 +48,15 @@ impl vec3_t {
         self.dot(self)
     }
 
+    pub fn unit(axis: u8) -> vec3_t {
+        match axis {
+            0 => v3(1.0, 0.0, 0.0),
+            1 => v3(0.0, 1.0, 0.0),
+            2 => v3(0.0, 0.0, 1.0),
+            _ => panic!("invalid"),
+        }
+    }
+
     pub fn map(self, f: impl Fn(f32) -> f32) -> vec3_t {
         vec3_t {
             x: f(self.x),

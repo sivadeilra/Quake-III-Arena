@@ -182,25 +182,21 @@ fn CM_TestBoxInBrush(cm: &clipMap_t, tw: &mut traceWork_t, brush: &cbrush_t) {
     tw.trace.contents = brush.contents;
 }
 
-fn CM_TestInLeaf(cm: &mut clipMap_t, tw: &mut traceWork_t, leaf: &cLeaf_t) {
+fn CM_TestInLeaf(cm: &clipMap_t, client: &mut ClipMapClient, tw: &mut traceWork_t, leaf: &cLeaf_t) {
     // test box position against all brushes in the leaf
     for k in 0..leaf.numLeafBrushes as usize {
         let brushnum = cm.leafbrushes[leaf.firstLeafBrush as usize + k] as usize;
 
-        let b = &mut cm.brushes[brushnum];
-        if b.checkcount == cm.checkcount {
+        let b = &cm.brushes[brushnum];
+        if client.check_brush(brushnum) {
             continue; // already checked this brush in another leaf
         }
-        b.checkcount = cm.checkcount;
 
         if (b.contents & tw.contents) == 0 {
             continue;
         }
 
-        // TODO: Eliminate this copy
-        let mut b_copy = b.clone();
-        CM_TestBoxInBrush(cm, tw, &mut b_copy);
-        cm.brushes[brushnum] = b_copy;
+        CM_TestBoxInBrush(cm, tw, b);
 
         if tw.trace.allsolid {
             return;
@@ -213,13 +209,12 @@ fn CM_TestInLeaf(cm: &mut clipMap_t, tw: &mut traceWork_t, leaf: &cLeaf_t) {
     // #else
     if !cm_noCurves.as_bool() {
         // #endif //BSPC
-        let cm_checkcount = cm.checkcount;
-        for opt_patch in cm.surfaces[leaf.leaf_surfaces_range()].iter_mut() {
-            if let Some(ref mut patch) = opt_patch {
-                if patch.checkcount == cm_checkcount {
+        for patch_num in leaf.leaf_surfaces_range() {
+            let opt_patch = &cm.surfaces[patch_num];
+            if let Some(ref patch) = opt_patch {
+                if client.check_patch(patch_num) {
                     continue; // already checked this brush in another leaf
                 }
-                patch.checkcount = cm_checkcount;
 
                 if (patch.contents & tw.contents) == 0 {
                     continue;
@@ -299,7 +294,12 @@ fn CM_TestCapsuleInCapsule(cm: &clipMap_t, tw: &mut traceWork_t, model: clipHand
 }
 
 /// bounding box inside capsule check
-fn CM_TestBoundingBoxInCapsule(cm: &mut clipMap_t, tw: &mut traceWork_t, model: clipHandle_t) {
+fn CM_TestBoundingBoxInCapsule(
+    cm: &mut clipMap_t,
+    client: &mut ClipMapClient,
+    tw: &mut traceWork_t,
+    model: clipHandle_t,
+) {
     // mins maxs of the capsule
     let vec3_bounds { mins, maxs } = CM_ModelBounds(cm, model);
 
@@ -324,12 +324,12 @@ fn CM_TestBoundingBoxInCapsule(cm: &mut clipMap_t, tw: &mut traceWork_t, model: 
     // TODO: eliminate this copy
     let cmod_leaf = cmod.leaf.clone();
 
-    CM_TestInLeaf(cm, tw, &cmod_leaf);
+    CM_TestInLeaf(cm, client, tw, &cmod_leaf);
 }
 
 const MAX_POSITION_LEAFS: usize = 1024;
 
-fn CM_PositionTest(cm: &mut clipMap_t, tw: &mut traceWork_t) {
+fn CM_PositionTest(cm: &clipMap_t, client: &mut ClipMapClient, tw: &mut traceWork_t) {
     let mut leafs = [0i32; MAX_POSITION_LEAFS];
 
     // identify the leafs we are touching
@@ -343,7 +343,7 @@ fn CM_PositionTest(cm: &mut clipMap_t, tw: &mut traceWork_t) {
         overflowed: false,
     };
 
-    cm.checkcount += 1;
+    client.next_checkcount();
 
     CM_BoxLeafnums_r(
         cm,
@@ -366,13 +366,13 @@ fn CM_PositionTest(cm: &mut clipMap_t, tw: &mut traceWork_t) {
         },
     );
 
-    cm.checkcount += 1;
+    client.next_checkcount();
 
     // test the contents of the leafs
     for &leaf_num in leafs[..ll.count].iter() {
         // TODO: eliminate this copy
         let leaf = cm.leafs[leaf_num as usize].clone();
-        CM_TestInLeaf(cm, tw, &leaf);
+        CM_TestInLeaf(cm, client, tw, &leaf);
         if tw.trace.allsolid {
             break;
         }
@@ -569,16 +569,20 @@ fn CM_TraceThroughBrush(cm: &clipMap_t, tw: &mut traceWork_t, brush: &cbrush_t) 
     }
 }
 
-fn CM_TraceThroughLeaf(cm: &mut clipMap_t, tw: &mut traceWork_t, leaf: &cLeaf_t) {
+fn CM_TraceThroughLeaf(
+    cm: &clipMap_t,
+    client: &mut ClipMapClient,
+    tw: &mut traceWork_t,
+    leaf: &cLeaf_t,
+) {
     // trace line against all brushes in the leaf
 
     for i in leaf.leaf_brushes_range() {
         let brushnum = cm.leafbrushes[i];
-        let b = &mut cm.brushes[brushnum as usize];
-        if b.checkcount == cm.checkcount {
+        let b = &cm.brushes[brushnum as usize];
+        if client.check_brush(brushnum as usize) {
             continue; // already checked this brush in another leaf
         }
-        b.checkcount = cm.checkcount;
 
         if (b.contents & tw.contents) == 0 {
             continue;
@@ -600,12 +604,12 @@ fn CM_TraceThroughLeaf(cm: &mut clipMap_t, tw: &mut traceWork_t, leaf: &cLeaf_t)
     /* !cm_noCurves.integer */
     {
         //#endif
-        for opt_patch in leaf.leaf_surfaces_mut(&mut cm.surfaces).iter_mut() {
-            if let Some(ref mut patch) = opt_patch {
-                if patch.checkcount == cm.checkcount {
+        for patch_num in leaf.leaf_surfaces_range() {
+            let opt_patch = &cm.surfaces[patch_num as usize];
+            if let Some(ref patch) = opt_patch {
+                if client.check_patch(patch_num) {
                     continue; // already checked this patch in another leaf
                 }
-                patch.checkcount = cm.checkcount;
 
                 if (patch.contents & tw.contents) == 0 {
                     continue;
@@ -848,7 +852,8 @@ bounding box vs. capsule collision
 ================
 */
 fn CM_TraceBoundingBoxThroughCapsule(
-    cm: &mut clipMap_t,
+    cm: &mut clipMap_t, // uses CM_TempBoxModel
+    client: &mut ClipMapClient,
     tw: &mut traceWork_t,
     model: clipHandle_t,
 ) {
@@ -878,7 +883,7 @@ fn CM_TraceBoundingBoxThroughCapsule(
     let cmod = CM_ClipHandleToModel(cm, h);
 
     let cmod_leaf = cmod.leaf.clone(); // TODO: remove copy
-    CM_TraceThroughLeaf(cm, tw, &cmod_leaf);
+    CM_TraceThroughLeaf(cm, client, tw, &cmod_leaf);
 }
 
 /// Traverse all the contacted leafs from the start to the end position.
@@ -886,7 +891,8 @@ fn CM_TraceBoundingBoxThroughCapsule(
 /// trace volumes it is possible to hit something in a later leaf with
 /// a smaller intercept fraction.
 fn CM_TraceThroughTree(
-    cm: &mut clipMap_t,
+    cm: &clipMap_t,
+    client: &mut ClipMapClient,
     tw: &mut traceWork_t,
     num: i32,
     p1f: f32,
@@ -902,7 +908,7 @@ fn CM_TraceThroughTree(
     if num < 0 {
         let leaf_num = -1 - num;
         let leaf_copy = cm.leafs[leaf_num as usize].clone(); // TODO: remove copy
-        CM_TraceThroughLeaf(cm, tw, &leaf_copy);
+        CM_TraceThroughLeaf(cm, client, tw, &leaf_copy);
         return;
     }
 
@@ -943,11 +949,11 @@ fn CM_TraceThroughTree(
 
     // see which sides we need to consider
     if t1 >= offset + 1.0 && t2 >= offset + 1.0 {
-        CM_TraceThroughTree(cm, tw, node.children[0], p1f, p2f, p1, p2);
+        CM_TraceThroughTree(cm, client, tw, node.children[0], p1f, p2f, p1, p2);
         return;
     }
     if t1 < -offset - 1.0 && t2 < -offset - 1.0 {
-        CM_TraceThroughTree(cm, tw, node.children[1], p1f, p2f, p1, p2);
+        CM_TraceThroughTree(cm, client, tw, node.children[1], p1f, p2f, p1, p2);
         return;
     }
 
@@ -984,7 +990,7 @@ fn CM_TraceThroughTree(
     }
     let midf = p1f + (p2f - p1f) * frac;
     let mid = p1 + frac * (p2 - p1);
-    CM_TraceThroughTree(cm, tw, this_child, p1f, midf, p1, mid);
+    CM_TraceThroughTree(cm, client, tw, this_child, p1f, midf, p1, mid);
 
     // go past the node
     if frac2 < 0.0 {
@@ -995,13 +1001,14 @@ fn CM_TraceThroughTree(
     }
     let midf = p1f + (p2f - p1f) * frac2;
     let mid = p1 + frac2 * (p2 - p1);
-    CM_TraceThroughTree(cm, tw, that_child, midf, p2f, mid, p2);
+    CM_TraceThroughTree(cm, client, tw, that_child, midf, p2f, mid, p2);
 }
 
 //======================================================================
 
 fn CM_Trace(
     cm: &mut clipMap_t,
+    client: &mut ClipMapClient,
     start: vec3_t,
     end: vec3_t,
     mins: Option<vec3_t>,
@@ -1015,7 +1022,7 @@ fn CM_Trace(
     let cmod = CM_ClipHandleToModel(cm, model);
     let cmod_leaf = cmod.leaf.clone(); // TODO: remove copy
 
-    cm.checkcount += 1; // for multi-check avoidance
+    client.next_checkcount(); // for multi-check avoidance
 
     // c_traces.add_one();             // for statistics, may be zeroed
 
@@ -1127,13 +1134,13 @@ fn CM_Trace(
                 if tw.sphere.use_ {
                     CM_TestCapsuleInCapsule(cm, &mut tw, model);
                 } else {
-                    CM_TestBoundingBoxInCapsule(cm, &mut tw, model);
+                    CM_TestBoundingBoxInCapsule(cm, client, &mut tw, model);
                 }
             } else {
-                CM_TestInLeaf(cm, &mut tw, &cmod_leaf);
+                CM_TestInLeaf(cm, client, &mut tw, &cmod_leaf);
             }
         } else {
-            CM_PositionTest(cm, &mut tw);
+            CM_PositionTest(cm, client, &mut tw);
         }
     } else {
         //
@@ -1169,15 +1176,15 @@ fn CM_Trace(
                 if tw.sphere.use_ {
                     CM_TraceCapsuleThroughCapsule(cm, &mut tw, model);
                 } else {
-                    CM_TraceBoundingBoxThroughCapsule(cm, &mut tw, model);
+                    CM_TraceBoundingBoxThroughCapsule(cm, client, &mut tw, model);
                 }
             } else {
-                CM_TraceThroughLeaf(cm, &mut tw, &cmod_leaf);
+                CM_TraceThroughLeaf(cm, client, &mut tw, &cmod_leaf);
             }
         } else {
             let tw_start = tw.start;
             let tw_end = tw.end;
-            CM_TraceThroughTree(cm, &mut tw, 0, 0.0, 1.0, tw_start, tw_end);
+            CM_TraceThroughTree(cm, client, &mut tw, 0, 0.0, 1.0, tw_start, tw_end);
         }
     }
 
@@ -1199,6 +1206,7 @@ fn CM_Trace(
 
 pub fn CM_BoxTrace(
     cm: &mut clipMap_t,
+    client: &mut ClipMapClient,
     start: vec3_t,
     end: vec3_t,
     mins: Option<vec3_t>,
@@ -1209,6 +1217,7 @@ pub fn CM_BoxTrace(
 ) -> trace_t {
     CM_Trace(
         cm,
+        client,
         start,
         end,
         mins,
@@ -1225,6 +1234,7 @@ pub fn CM_BoxTrace(
 /// rotating entities
 pub fn CM_TransformedBoxTrace(
     cm: &mut clipMap_t,
+    client: &mut ClipMapClient,
     start: vec3_t,
     end: vec3_t,
     mins: Option<vec3_t>,
@@ -1291,6 +1301,7 @@ pub fn CM_TransformedBoxTrace(
     // sweep the box through the model
     let mut trace = CM_Trace(
         cm,
+        client,
         start_l,
         end_l,
         Some(symetricSize0),

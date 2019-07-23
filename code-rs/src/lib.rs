@@ -96,3 +96,10 @@ pub mod num_utils {
         }
     }
 }
+
+fn range_len<N>(start: N, count: N) -> std::ops::Range<N>
+where
+    N: Copy + std::ops::Add<N, Output = N>,
+{
+    start..start + count
+}

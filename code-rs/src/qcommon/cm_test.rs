@@ -69,10 +69,10 @@ Fills in a list of all the leafs touched
 =============
 */
 pub fn CM_BoxLeafnums_r(
-    cm: &mut clipMap_t,
+    cm: &clipMap_t,
     ll: &mut leafList_t,
     mut nodenum: i32,
-    storeLeafs: &mut impl FnMut(&mut clipMap_t, &mut leafList_t, i32),
+    storeLeafs: &mut impl FnMut(&clipMap_t, &mut leafList_t, i32),
 ) {
     loop {
         if nodenum < 0 {
@@ -98,12 +98,13 @@ pub fn CM_BoxLeafnums_r(
 }
 
 fn CM_BoxLeafnums(
-    cm: &mut clipMap_t,
+    cm: &clipMap_t,
+    client: &mut ClipMapClient,
     mins: vec3_t,
     maxs: vec3_t,
     list: &mut [i32],
 ) -> (/*count*/ i32, /*lastLeaf*/ i32) {
-    cm.checkcount += 1;
+    client.checkcount += 1;
 
     let mut ll = leafList_t {
         bounds: vec3_bounds { mins, maxs },
@@ -133,8 +134,14 @@ fn CM_BoxLeafnums(
 }
 
 /// `list` returns a list of cbrush_t indices (in cm.leafbrushes)
-fn CM_BoxBrushes(cm: &mut clipMap_t, mins: vec3_t, maxs: vec3_t, list: &mut [i32]) -> i32 {
-    cm.checkcount += 1;
+fn CM_BoxBrushes(
+    cm: &clipMap_t,
+    client: &mut ClipMapClient,
+    mins: vec3_t,
+    maxs: vec3_t,
+    list: &mut [i32],
+) -> i32 {
+    client.checkcount += 1;
 
     let mut ll = leafList_t {
         bounds: vec3_bounds { mins, maxs },
@@ -149,14 +156,12 @@ fn CM_BoxBrushes(cm: &mut clipMap_t, mins: vec3_t, maxs: vec3_t, list: &mut [i32
         let leafnum = -1 - nodenum;
         let leaf = &cm.leafs[leafnum as usize];
 
-        for k in 0..leaf.numLeafBrushes as usize {
-            let brushnum = cm.leafbrushes[leaf.firstLeafBrush as usize + k];
-            let b: &mut cbrush_t = &mut cm.brushes[brushnum as usize];
-            if b.checkcount == cm.checkcount {
+        for k in leaf.leaf_brushes_range() {
+            let brushnum = cm.leafbrushes[k] as usize;
+            if client.check_brush(brushnum) {
                 continue; // already checked this brush in another leaf
             }
-            b.checkcount = cm.checkcount;
-
+            let b = &cm.brushes[brushnum];
             let any_bounds_misordered = (0..3).any(|i| {
                 b.bounds.mins[i] >= ll.bounds.maxs[i] || b.bounds.maxs[i] <= ll.bounds.mins[i]
             });
@@ -164,7 +169,7 @@ fn CM_BoxBrushes(cm: &mut clipMap_t, mins: vec3_t, maxs: vec3_t, list: &mut [i32
                 continue;
             }
             if ll.count < list.len() {
-                list[ll.count] = brushnum;
+                list[ll.count] = brushnum as i32;
                 ll.count += 1;
             } else {
                 ll.overflowed = true;
@@ -184,8 +189,6 @@ fn CM_BoxBrushes(cm: &mut clipMap_t, mins: vec3_t, maxs: vec3_t, list: &mut [i32
     });
     ll.count as i32
 }
-
-//====================================================================
 
 fn CM_PointContents(cm: &clipMap_t, p: vec3_t, model: clipHandle_t) -> i32 {
     if cm.nodes.is_empty() {
@@ -224,14 +227,8 @@ fn CM_PointContents(cm: &clipMap_t, p: vec3_t, model: clipHandle_t) -> i32 {
     contents
 }
 
-/*
-==================
-CM_TransformedPointContents
-
-Handles offseting and rotation of the end points for moving and
-rotating entities
-==================
-*/
+/// Handles offseting and rotation of the end points for moving and
+/// rotating entities
 fn CM_TransformedPointContents(
     cm: &clipMap_t,
     p: vec3_t,
@@ -278,38 +275,35 @@ AREAPORTALS
 ===============================================================================
 */
 
-fn CM_FloodArea_r(cm: &mut clipMap_t, areaNum: i32, floodnum: i32) {
-    let area = &mut cm.areas[areaNum as usize];
-
+fn CM_FloodArea_r(cm: &mut clipMap_t, areaNum: usize, floodnum: i32) {
+    let area = &mut cm.areas[areaNum];
     if area.floodvalid == cm.floodvalid {
-        if area.floodnum == floodnum {
-            return;
-        }
-        panic!("FloodArea_r: reflooded");
+        assert_eq!(area.floodnum, floodnum, "reflooded");
+        return;
     }
-
     area.floodnum = floodnum;
     area.floodvalid = cm.floodvalid;
-    let con_offset = areaNum as usize * cm.areas.len(); // index into cm.areaPortals
+
+    let con_offset = areaNum * cm.areas.len(); // index into cm.areaPortals
     for i in 0..cm.areas.len() {
         if cm.areaPortals[con_offset + i] > 0 {
-            CM_FloodArea_r(cm, i as i32, floodnum);
+            CM_FloodArea_r(cm, i, floodnum);
         }
     }
 }
 
 pub fn CM_FloodAreaConnections(cm: &mut clipMap_t) {
     // all current floods are now invalid
-    cm.floodvalid += 1;
+    cm.floodvalid = cm.floodvalid.wrapping_add(1);
     let mut floodnum = 0;
 
     for i in 0..cm.areas.len() {
-        let area: &mut cArea_t = &mut cm.areas[i];
+        let area = &cm.areas[i];
         if area.floodvalid == cm.floodvalid {
             continue; // already flooded into
         }
         floodnum += 1;
-        CM_FloodArea_r(cm, i as i32, floodnum);
+        CM_FloodArea_r(cm, i, floodnum);
     }
 }
 
