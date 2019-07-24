@@ -26,6 +26,7 @@ use crate::qcommon::cm_load::*;
 use crate::qcommon::cm_local::*;
 use crate::qcommon::cm_patch::*;
 use crate::qcommon::cm_test::CM_BoxLeafnums_r;
+use log::{debug, warn};
 
 // always use bbox vs. bbox collision and never capsule vs. bbox or vice versa
 //#define ALWAYS_BBOX_VS_BBOX
@@ -1021,6 +1022,39 @@ fn CM_TraceThroughTree(
 
 //======================================================================
 
+#[no_mangle]
+extern "C" fn rust_CM_Trace(
+    trace: *mut (),
+    start: &vec3_t,
+    end: &vec3_t,
+    mins: Option<&vec3_t>,
+    maxs: Option<&vec3_t>,
+    model: i32,
+    origin: &vec3_t,
+    brushmask: i32,
+    capsule:  i32,
+    sphere: *const ()
+) {
+    let mut g = cm();
+    if let Some(ref mut cm) = *g {
+        debug!("rust_CM_Trace: model={} start={:?} end={:?}",  model, start, end);
+        let mut client = ClipMapClient::new(&cm);
+        CM_Trace(cm, &mut client, 
+            *start,
+            *end,
+            mins.map(|v| *v),
+            maxs.map(|v| *v),
+            model,
+            *origin,
+            brushmask,
+            capsule,
+            None /*sphere*/);
+    } else {
+        warn!("global clip map is not set");
+    }
+
+}
+
 fn CM_Trace(
     cm: &mut clipMap_t,
     client: &mut ClipMapClient,
@@ -1129,7 +1163,7 @@ fn CM_Trace(
     //
     // check for position test special case
     //
-    if start[0] == end[0] && start[1] == end[1] && start[2] == end[2] {
+	if start == end {
         if model != 0 {
             /*
             #ifdef ALWAYS_BBOX_VS_BBOX // bk010201 - FIXME - compile time flag?
@@ -1216,6 +1250,7 @@ fn CM_Trace(
     assert!(
         tw.trace.allsolid || tw.trace.fraction == 1.0 || (tw.trace.plane.normal).length2() > 0.9999
     );
+	debug!("trace done: {:?}", tw.trace);
     return tw.trace;
 }
 

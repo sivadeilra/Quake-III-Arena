@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 // cmodel.c -- model loading
 
+#include <windows.h>
 #include "cm_local.h"
 
 #ifdef BSPC
@@ -559,6 +560,8 @@ unsigned CM_Checksum(dheader_t *header) {
 	return LittleLong(Com_BlockChecksum(checksums, 11 * 4));
 }
 
+void __cdecl rust_LoadMap(const unsigned char* buf, size_t length);
+
 /*
 ==================
 CM_LoadMap
@@ -614,6 +617,9 @@ void CM_LoadMap( const char *name, qboolean clientload, int *checksum ) {
 	if ( !buf ) {
 		Com_Error (ERR_DROP, "Couldn't load %s", name);
 	}
+
+	AllocConsole();
+	rust_LoadMap(buf, length);
 
 	last_checksum = LittleLong (Com_BlockChecksum (buf, length));
 	*checksum = last_checksum;

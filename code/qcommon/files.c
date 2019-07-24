@@ -2877,6 +2877,7 @@ static void FS_SetRestrictions( void ) {
 	FS_Startup( DEMOGAME );
 
 	// make sure that the pak file has the header checksum we expect
+#if 0
 	for ( path = fs_searchpaths ; path ; path = path->next ) {
 		if ( path->pack ) {
 			// a tiny attempt to keep the checksum from being scannable from the exe
@@ -2885,6 +2886,7 @@ static void FS_SetRestrictions( void ) {
 			}
 		}
 	}
+#endif
 }
 
 /*

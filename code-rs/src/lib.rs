@@ -27,6 +27,7 @@ macro_rules! todo_type {
 
 pub mod bounds;
 pub mod cvar;
+pub mod dbg_logger;
 pub mod game;
 pub mod math;
 pub mod perf;
@@ -121,4 +122,14 @@ pub mod encoding {
     pub fn get_le_i32(bytes: &[u8]) -> i32 {
         get_le_u32(bytes) as i32
     }
+}
+
+#[no_mangle]
+extern "C" fn rust_init_runtime() {
+    log::set_logger(&crate::dbg_logger::DBG_LOGGER).unwrap();
+    log::set_max_level(log::LevelFilter::Debug);
+    log::debug!("this is debug");
+    log::warn!("this is warn");
+    log::info!("this is info");
+    log::error!("this is error");
 }

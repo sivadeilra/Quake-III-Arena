@@ -1176,6 +1176,10 @@ void Sys_Init( void ) {
 
 int	totalMsec, countMsec;
 
+void __cdecl rust_init_runtime();
+
+void __cdecl from_rust_dbg_log();
+
 /*
 ==================
 WinMain
@@ -1190,6 +1194,8 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
     if ( hPrevInstance ) {
         return 0;
 	}
+
+	rust_init_runtime();
 
 	g_wv.hInstance = hInstance;
 	Q_strncpyz( sys_cmdline, lpCmdLine, sizeof( sys_cmdline ) );

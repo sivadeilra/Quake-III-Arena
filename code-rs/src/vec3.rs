@@ -5,7 +5,7 @@ pub type vec_t = f32;
 
 // see game/q_shared.h
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 #[repr(C)]
 pub struct vec3_t {
     pub x: f32,
