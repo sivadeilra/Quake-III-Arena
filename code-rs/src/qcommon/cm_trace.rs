@@ -344,7 +344,7 @@ fn CM_TestBoundingBoxInCapsule(
     CM_TestInLeaf(cm, client, tw, &cmod_leaf);
 }
 
-const MAX_POSITION_LEAFS: usize = 1024;
+// const MAX_POSITION_LEAFS: usize = 1024;
 
 fn CM_PositionTest(cm: &clipMap_t, client: &mut ClipMapClient, tw: &mut traceWork_t) {
     // identify the leafs we are touching
@@ -352,10 +352,6 @@ fn CM_PositionTest(cm: &clipMap_t, client: &mut ClipMapClient, tw: &mut traceWor
         mins: tw.size[0] + tw.start - vec3_t::from_scalar(1.0),
         maxs: tw.size[1] + tw.start + vec3_t::from_scalar(1.0),
     };
-
-    let mut leafs = [0i32; MAX_POSITION_LEAFS];
-    let mut num_leafs_found: usize = 0;
-
     client.next_checkcount();
 
     CM_BoxLeafnums_r(
@@ -363,26 +359,15 @@ fn CM_PositionTest(cm: &clipMap_t, client: &mut ClipMapClient, tw: &mut traceWor
         bounds,
         0,
         &mut |leaf_num| {
-            // was CM_StoreLeafs
-            if num_leafs_found < leafs.len() {
-                leafs[num_leafs_found] = leaf_num;
-                num_leafs_found += 1;
-            } else {
-                // overflowed
+            // test the contents of the leafs
+            let leaf = &cm.leafs[leaf_num as usize];
+            CM_TestInLeaf(cm, client, tw, leaf);
+            if tw.trace.allsolid {
+                return Some(());
             }
+            None
         },
     );
-
-    client.next_checkcount();
-
-    // test the contents of the leafs
-    for &leaf_num in leafs[..num_leafs_found].iter() {
-        let leaf = &cm.leafs[leaf_num as usize];
-        CM_TestInLeaf(cm, client, tw, leaf);
-        if tw.trace.allsolid {
-            break;
-        }
-    }
 }
 
 /*

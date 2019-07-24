@@ -3,6 +3,7 @@
 #![allow(non_camel_case_types)]
 #![allow(unused_macros)]
 #![allow(non_upper_case_globals)]
+#![allow(unused_imports)]
 
 macro_rules! expand_axis {
     ($axis:ident) => {};
@@ -31,6 +32,7 @@ pub mod dbg_logger;
 pub mod game;
 pub mod math;
 pub mod perf;
+pub mod port_trace;
 pub mod q_math;
 pub mod q_shared;
 pub mod qcommon;

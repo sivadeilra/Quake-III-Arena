@@ -62,17 +62,18 @@ LEAF LISTING
 */
 
 /// Fills in a list of all the leafs touched
-pub fn CM_BoxLeafnums_r(
+/// If store_leafs returns Some<R>, then the tree walk terminates and
+/// the Some<R> value is returned.  `None` means continue.
+pub fn CM_BoxLeafnums_r<R>(
     cm: &clipMap_t,
     bounds: vec3_bounds,
     mut nodenum: i32,
-    store_leaf: &mut impl FnMut(i32),
-) {
+    store_leaf: &mut impl FnMut(i32) -> Option<R>,
+) -> Option<R> {
     loop {
         if nodenum < 0 {
             let leaf_num = -1 - nodenum;
-            store_leaf(leaf_num);
-            return;
+            return store_leaf(leaf_num);
         }
 
         let node = &cm.nodes[nodenum as usize];
@@ -86,7 +87,10 @@ pub fn CM_BoxLeafnums_r(
             nodenum = children1;
         } else {
             // go down both
-            CM_BoxLeafnums_r(cm, bounds, children0, store_leaf);
+            let child_r = CM_BoxLeafnums_r(cm, bounds, children0, store_leaf);
+            if child_r.is_some() {
+                return child_r;
+            }
             nodenum = children1;
         }
     }
@@ -117,14 +121,17 @@ fn CM_BoxLeafnums(
         if num_found < list.len() {
             list[num_found as usize] = leafNum;
             num_found += 1;
+            None
         } else {
             overflowed = true;
+            Some(())
         }
     });
 
     (num_found as i32, last_leaf)
 }
 
+/// TODO: This appears to be dead code, in the original C code.
 /// `list` returns a list of cbrush_t indices (in cm.leafbrushes)
 fn CM_BoxBrushes(
     cm: &clipMap_t,
@@ -158,6 +165,7 @@ fn CM_BoxBrushes(
                 num_found += 1;
             } else {
                 // overflowed
+                return Some(());
             }
         }
         /*
@@ -171,6 +179,7 @@ fn CM_BoxBrushes(
             }
         #endif
         */
+        None
     });
     num_found as i32
 }
