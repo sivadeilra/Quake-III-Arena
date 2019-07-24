@@ -61,22 +61,17 @@ LEAF LISTING
 ======================================================================
 */
 
-/*
-=============
-CM_BoxLeafnums
-
-Fills in a list of all the leafs touched
-=============
-*/
+/// Fills in a list of all the leafs touched
 pub fn CM_BoxLeafnums_r(
     cm: &clipMap_t,
-    ll: &mut leafList_t,
+    bounds: vec3_bounds,
     mut nodenum: i32,
-    storeLeafs: &mut impl FnMut(&clipMap_t, &mut leafList_t, i32),
+    store_leaf: &mut impl FnMut(i32),
 ) {
     loop {
         if nodenum < 0 {
-            storeLeafs(cm, ll, nodenum);
+            let leaf_num = -1 - nodenum;
+            store_leaf(leaf_num);
             return;
         }
 
@@ -84,14 +79,14 @@ pub fn CM_BoxLeafnums_r(
         let children0 = node.children[0];
         let children1 = node.children[1];
         let plane = &cm.planes[node.plane_index as usize];
-        let s = BoxOnPlaneSide(ll.bounds.mins, ll.bounds.maxs, plane);
+        let s = BoxOnPlaneSide(bounds.mins, bounds.maxs, plane);
         if s == 1 {
             nodenum = children0;
         } else if s == 2 {
             nodenum = children1;
         } else {
             // go down both
-            CM_BoxLeafnums_r(cm, ll, children0, storeLeafs);
+            CM_BoxLeafnums_r(cm, bounds, children0, store_leaf);
             nodenum = children1;
         }
     }
@@ -106,31 +101,28 @@ fn CM_BoxLeafnums(
 ) -> (/*count*/ i32, /*lastLeaf*/ i32) {
     client.next_checkcount();
 
-    let mut ll = leafList_t {
-        bounds: vec3_bounds { mins, maxs },
-        count: 0,
-        lastLeaf: 0,
-        overflowed: false,
-    };
+    let bounds = vec3_bounds { mins, maxs };
+    let mut overflowed = false;
+    let mut num_found: usize = 0;
+    let mut last_leaf = 0;
 
-    CM_BoxLeafnums_r(cm, &mut ll, 0, &mut |cm, ll: &mut leafList_t, nodenum| {
+    CM_BoxLeafnums_r(cm, bounds, 0, &mut |leafNum| {
         // was: CM_StoreLeafs
-        let leafNum = -1 - nodenum;
 
-        // store the lastLeaf even if the list is overflowed
+        // store the last_leaf even if the list is overflowed
         if cm.leafs[leafNum as usize].cluster != -1 {
-            ll.lastLeaf = leafNum;
+            last_leaf = leafNum;
         }
 
-        if ll.count < list.len() {
-            list[ll.count as usize] = leafNum;
-            ll.count += 1;
+        if num_found < list.len() {
+            list[num_found as usize] = leafNum;
+            num_found += 1;
         } else {
-            ll.overflowed = true;
+            overflowed = true;
         }
     });
 
-    (ll.count as i32, ll.lastLeaf)
+    (num_found as i32, last_leaf)
 }
 
 /// `list` returns a list of cbrush_t indices (in cm.leafbrushes)
@@ -143,18 +135,11 @@ fn CM_BoxBrushes(
 ) -> i32 {
     client.next_checkcount();
 
-    let mut ll = leafList_t {
-        bounds: vec3_bounds { mins, maxs },
-        count: 0,
-        //list: (void *)list,
-        //storeLeafs: CM_StoreBrushes,
-        lastLeaf: 0,
-        overflowed: false,
-    };
-    CM_BoxLeafnums_r(cm, &mut ll, 0, &mut |cm, ll: &mut leafList_t, nodenum| {
+    let bounds = vec3_bounds { mins, maxs };
+    let mut num_found: usize = 0;
+    CM_BoxLeafnums_r(cm, bounds, 0, &mut |leafNum| {
         // was: CM_StoreBrushes
-        let leafnum = -1 - nodenum;
-        let leaf = &cm.leafs[leafnum as usize];
+        let leaf = &cm.leafs[leafNum as usize];
 
         for k in leaf.leaf_brushes_range() {
             let brushnum = cm.leafbrushes[k] as usize;
@@ -163,16 +148,16 @@ fn CM_BoxBrushes(
             }
             let b = &cm.brushes[brushnum];
             let any_bounds_misordered = (0..3).any(|i| {
-                b.bounds.mins[i] >= ll.bounds.maxs[i] || b.bounds.maxs[i] <= ll.bounds.mins[i]
+                b.bounds.mins[i] >= bounds.maxs[i] || b.bounds.maxs[i] <= bounds.mins[i]
             });
             if any_bounds_misordered {
                 continue;
             }
-            if ll.count < list.len() {
-                list[ll.count] = brushnum as i32;
-                ll.count += 1;
+            if num_found < list.len() {
+                list[num_found] = brushnum as i32;
+                num_found += 1;
             } else {
-                ll.overflowed = true;
+                // overflowed
             }
         }
         /*
@@ -187,7 +172,7 @@ fn CM_BoxBrushes(
         #endif
         */
     });
-    ll.count as i32
+    num_found as i32
 }
 
 fn CM_PointContents(cm: &clipMap_t, p: vec3_t, model: clipHandle_t) -> i32 {

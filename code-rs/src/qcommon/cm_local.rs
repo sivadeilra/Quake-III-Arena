@@ -286,10 +286,3 @@ pub struct sphere_t {
     pub halfheight: f32,
     pub offset: vec3_t,
 }
-
-pub struct leafList_t {
-    pub count: usize,
-    pub overflowed: bool,
-    pub bounds: vec3_bounds,
-    pub lastLeaf: i32, // for overflows where each leaf can't be stored individually
-}

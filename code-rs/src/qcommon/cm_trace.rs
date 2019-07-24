@@ -347,38 +347,28 @@ fn CM_TestBoundingBoxInCapsule(
 const MAX_POSITION_LEAFS: usize = 1024;
 
 fn CM_PositionTest(cm: &clipMap_t, client: &mut ClipMapClient, tw: &mut traceWork_t) {
-    let mut leafs = [0i32; MAX_POSITION_LEAFS];
-
     // identify the leafs we are touching
-    let mut ll = leafList_t {
-        bounds: vec3_bounds {
-            mins: tw.size[0] + tw.start - vec3_t::from_scalar(1.0),
-            maxs: tw.size[1] + tw.start + vec3_t::from_scalar(1.0),
-        },
-        count: 0,
-        lastLeaf: 0,
-        overflowed: false,
+    let bounds = vec3_bounds {
+        mins: tw.size[0] + tw.start - vec3_t::from_scalar(1.0),
+        maxs: tw.size[1] + tw.start + vec3_t::from_scalar(1.0),
     };
+
+    let mut leafs = [0i32; MAX_POSITION_LEAFS];
+    let mut num_leafs_found: usize = 0;
 
     client.next_checkcount();
 
     CM_BoxLeafnums_r(
         cm,
-        &mut ll,
+        bounds,
         0,
-        &mut |cm, ll: &mut leafList_t, nodenum: i32| {
+        &mut |leaf_num| {
             // was CM_StoreLeafs
-            let leafNum = -1 - nodenum;
-
-            // store the lastLeaf even if the list is overflowed
-            if cm.leafs[leafNum as usize].cluster != -1 {
-                ll.lastLeaf = leafNum;
-            }
-            if ll.count < leafs.len() {
-                leafs[ll.count] = leafNum;
-                ll.count += 1;
+            if num_leafs_found < leafs.len() {
+                leafs[num_leafs_found] = leaf_num;
+                num_leafs_found += 1;
             } else {
-                ll.overflowed = true;
+                // overflowed
             }
         },
     );
@@ -386,10 +376,9 @@ fn CM_PositionTest(cm: &clipMap_t, client: &mut ClipMapClient, tw: &mut traceWor
     client.next_checkcount();
 
     // test the contents of the leafs
-    for &leaf_num in leafs[..ll.count].iter() {
-        // TODO: eliminate this copy
-        let leaf = cm.leafs[leaf_num as usize].clone();
-        CM_TestInLeaf(cm, client, tw, &leaf);
+    for &leaf_num in leafs[..num_leafs_found].iter() {
+        let leaf = &cm.leafs[leaf_num as usize];
+        CM_TestInLeaf(cm, client, tw, leaf);
         if tw.trace.allsolid {
             break;
         }
@@ -835,11 +824,7 @@ fn CM_TraceCapsuleThroughCapsule(cm: &clipMap_t, tw: &mut traceWork_t, model: cl
 
     let halfwidth = symetricSize1[0];
     let halfheight = symetricSize1[2];
-    let mut radius = if halfwidth > halfheight {
-        halfheight
-    } else {
-        halfwidth
-    };
+    let mut radius = fmin(halfwidth, halfheight);
     let offs = halfheight - radius;
     let mut top = offset;
     top[2] += offs;
@@ -887,11 +872,7 @@ fn CM_TraceBoundingBoxThroughCapsule(
 
     // replace the bounding box with the capsule
     tw.sphere.use_ = true;
-    tw.sphere.radius = if size1[0] > size1[2] {
-        size1[2]
-    } else {
-        size1[0]
-    };
+    tw.sphere.radius = fmin(size1[0], size1[2]);
     tw.sphere.halfheight = size1[2];
     tw.sphere.offset = VectorSet(0.0, 0.0, size1[2] - tw.sphere.radius);
 

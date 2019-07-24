@@ -184,6 +184,18 @@ impl core::ops::MulAssign<vec_t> for vec3_t {
     }
 }
 
+impl core::convert::From<[vec_t; 3]> for vec3_t {
+    fn from(v: [vec_t; 3]) -> vec3_t {
+        vec3_t(v)
+    }
+}
+
+impl core::convert::From<vec3_t> for [vec_t; 3] {
+    fn from(v: vec3_t) -> [vec_t; 3] {
+        v.0
+    }
+}
+
 pub fn DotProduct(a: vec3_t, b: vec3_t) -> f32 {
     a.dot(b)
 }
