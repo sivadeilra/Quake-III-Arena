@@ -572,9 +572,13 @@ pub fn CM_LoadMapFromSlice(name: &str, buf: &[u8]) ->  Result<clipMap_t, Error> 
         num_area_portals,
     } = CMod_LoadLeafs(header.lumps[LUMP_LEAFS], &file)?;
     let mut leafbrushes = CMod_LoadLeafBrushes(header.lumps[LUMP_LEAFBRUSHES], &file)?;
+    debug!("leafbrushes.len = {}", leafbrushes.len());
     let mut leafsurfaces = CMod_LoadLeafSurfaces(header.lumps[LUMP_LEAFSURFACES], &file)?;
+    debug!("leafsurfaces.len = {}", leafsurfaces.len());
     let planes = CMod_LoadPlanes(header.lumps[LUMP_PLANES], &file)?;
+    debug!("planes.len = {}", planes.len());
     let brushsides = CMod_LoadBrushSides(&shaders, header.lumps[LUMP_BRUSHSIDES], &file)?;
+    debug!("brushsides.len = {}", brushsides.len());
     let brushes = CMod_LoadBrushes(
         &shaders,
         &brushsides,
@@ -582,14 +586,18 @@ pub fn CM_LoadMapFromSlice(name: &str, buf: &[u8]) ->  Result<clipMap_t, Error> 
         header.lumps[LUMP_BRUSHES],
         &file,
     )?;
+    debug!("brushes.len = {}", brushes.len());
     let cmodels = CMod_LoadSubmodels(
         &mut leafbrushes,
         &mut leafsurfaces,
         header.lumps[LUMP_MODELS],
         &file,
     )?;
+    debug!("cmodels.len = {}", cmodels.len());
     let nodes = CMod_LoadNodes(header.lumps[LUMP_NODES], &file)?;
+    debug!("nodes.len = {}", nodes.len());
     let entityString = CMod_LoadEntityString(header.lumps[LUMP_ENTITIES], &file)?;
+    debug!("entityString.len = {}", entityString.len());
     let vis = CMod_LoadVisibility(num_clusters, header.lumps[LUMP_VISIBILITY], &file)?;
     let surfaces = CMod_LoadPatches(
         &shaders,
@@ -597,6 +605,7 @@ pub fn CM_LoadMapFromSlice(name: &str, buf: &[u8]) ->  Result<clipMap_t, Error> 
         header.lumps[LUMP_DRAWVERTS],
         &file,
     )?;
+    debug!("surfaces.len = {}", surfaces.len());
 
     let mut cm = clipMap_t {
         shaders,
@@ -725,6 +734,8 @@ pub fn CM_InitBoxHull(cm: &mut clipMap_t) {
         shaderNum: -1,
     });
 
+    debug!("CM_InitBoxHull: box_brush_index = {}, brushes.len = {}", cm.box_brush_index, cm.brushes.len());
+
     let box_model = cmodel_t {
         leaf: cLeaf_t {
             numLeafBrushes: 1,
@@ -735,7 +746,7 @@ pub fn CM_InitBoxHull(cm: &mut clipMap_t) {
         mins: vec3_t::ORIGIN,
     };
 
-    cm.leafbrushes.push(cm.brushes.len() as i32);
+    cm.leafbrushes.push(cm.box_brush_index as i32);
 
     let firstPlane = cm.planes.len();
 

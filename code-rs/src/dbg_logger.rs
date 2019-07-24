@@ -6,7 +6,11 @@ pub struct DbgLogger;
 impl  Log for DbgLogger {
     fn enabled(&self, _metadata: &Metadata) -> bool { true }
     fn log(&self, record: &Record) {
-        let s = format!("{:8} {}] {}\r\n\0", record.level(),  record.module_path().unwrap_or("???"), record.args());
+        let mut s: String = format!("{:8} {}] {}", record.level(),  record.module_path().unwrap_or("???"), record.args());
+        let e = s.trim_end().len();
+        s.truncate(e);
+        s.push_str("\r\n");
+        s.push('\0'); // NUL terminate
         unsafe {
             OutputDebugStringA(s.as_bytes().as_ptr());
         }

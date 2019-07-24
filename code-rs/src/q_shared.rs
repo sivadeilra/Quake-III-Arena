@@ -989,7 +989,7 @@ pub fn PlaneTypeForNormal(x: vec3_t) -> PLANE_TYPE {
 // plane_t structure
 // !!! if this is changed, it must be changed in asm code too !!!
 pub type cplane_s = cplane_t;
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 #[repr(C)]
 pub struct cplane_t {
     pub normal: vec3_t,
@@ -1006,7 +1006,7 @@ impl cplane_t {
 }
 
 // a trace is returned when a box is swept through the world
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 #[repr(C)]
 pub struct trace_t {
     pub allsolid: bool,    // if true, plane is not valid
@@ -1019,6 +1019,48 @@ pub struct trace_t {
     pub entityNum: i32,    // entity the contacted sirface is a part of
 }
 
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct qboolean(i32);
+pub const qtrue: qboolean = qboolean(1);
+pub const qfalse: qboolean = qboolean(0);
+
+impl From<qboolean> for bool {
+    fn from(b: qboolean) -> bool {
+        b.0 != 0
+    }
+}
+impl From<bool> for qboolean {
+    fn from(b: bool) -> qboolean {
+        qboolean(b as i32)
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[repr(C)]
+pub struct trace_t_interop {
+    pub allsolid: qboolean,    // if true, plane is not valid
+    pub startsolid: qboolean,  // if true, the initial point was in a solid area
+    pub fraction: f32,     // time completed, 1.0 = didn't hit anything
+    pub endpos: vec3_t,    // final position
+    pub plane: cplane_t,   // surface normal at impact, transformed to world space
+    pub surfaceFlags: i32, // surface hit
+    pub contents: i32,     // contents on other side of surface hit
+    pub entityNum: i32,    // entity the contacted sirface is a part of
+}
+impl From<trace_t_interop> for trace_t {
+    fn from(t: trace_t_interop) -> Self {
+        Self {
+            allsolid: t.allsolid.into(),
+            startsolid: t.startsolid.into(),
+            fraction: t.fraction,
+            endpos: t.endpos,
+            plane: t.plane,
+            surfaceFlags: t.surfaceFlags,
+            contents: t.contents,
+            entityNum: t.entityNum
+        }
+    }
+}
 /*
 
 // trace->entityNum can also be 0 to (MAX_GENTITIES-1)

@@ -1141,7 +1141,12 @@ void CM_TraceThroughTree( traceWork_t *tw, int num, float p1f, float p2f, vec3_t
 //======================================================================
 
 void __cdecl rust_CM_Trace(trace_t* results, const vec3_t start, const vec3_t end, vec3_t mins, vec3_t maxs,
-	clipHandle_t model, const vec3_t origin, int brushmask, int capsule, sphere_t* sphere);
+	clipHandle_t model, const vec3_t origin, int brushmask, int capsule, sphere_t* sphere,
+    
+    // expected results
+    const trace_t* expected_results,
+    size_t expected_results_size
+    );
 
 /*
 ==================
@@ -1154,8 +1159,6 @@ void CM_Trace( trace_t *results, const vec3_t start, const vec3_t end, vec3_t mi
 	traceWork_t	tw;
 	vec3_t		offset;
 	cmodel_t	*cmod;
-
-	rust_CM_Trace(results, start, end, mins, maxs, model, origin, brushmask, capsule, sphere);
 
 	cmod = CM_ClipHandleToModel( model );
 
@@ -1361,6 +1364,9 @@ void CM_Trace( trace_t *results, const vec3_t start, const vec3_t end, vec3_t mi
                tw.trace.fraction == 1.0 ||
                VectorLengthSquared(tw.trace.plane.normal) > 0.9999);
 	*results = tw.trace;
+
+    rust_CM_Trace(results, start, end, mins, maxs, model, origin, brushmask, capsule, sphere, &tw.trace, sizeof(trace_t));
+
 }
 
 /*

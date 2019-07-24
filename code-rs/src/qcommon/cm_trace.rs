@@ -26,7 +26,7 @@ use crate::qcommon::cm_load::*;
 use crate::qcommon::cm_local::*;
 use crate::qcommon::cm_patch::*;
 use crate::qcommon::cm_test::CM_BoxLeafnums_r;
-use log::{debug, warn};
+use log::{debug, warn, trace};
 
 // always use bbox vs. bbox collision and never capsule vs. bbox or vice versa
 //#define ALWAYS_BBOX_VS_BBOX
@@ -225,7 +225,8 @@ fn CM_TestInLeaf(cm: &clipMap_t, client: &mut ClipMapClient, tw: &mut traceWork_
     // #else
     if !cm_noCurves.as_bool() {
         // #endif //BSPC
-        for patch_num in leaf.leaf_surfaces_range() {
+        for ii in leaf.leaf_surfaces_range() {
+            let patch_num = cm.leafsurfaces[ii] as usize;
             let opt_patch = &cm.surfaces[patch_num];
             if let Some(ref patch) = opt_patch {
                 if client.check_patch(patch_num) {
@@ -620,7 +621,8 @@ fn CM_TraceThroughLeaf(
     /* !cm_noCurves.integer */
     {
         //#endif
-        for patch_num in leaf.leaf_surfaces_range() {
+        for i in leaf.leaf_surfaces_range() {
+            let patch_num = cm.leafsurfaces[i as usize] as usize;
             let opt_patch = &cm.surfaces[patch_num as usize];
             if let Some(ref patch) = opt_patch {
                 if client.check_patch(patch_num) {
@@ -1022,9 +1024,15 @@ fn CM_TraceThroughTree(
 
 //======================================================================
 
+use core::fmt::Debug;
+
+fn dbg_check<T: PartialEq + Debug>(name: &str, actual: T, expected: T) {
+    debug!("check: {:10} : {:?} vs {:?} - {:?}", name, expected, actual, expected == actual);
+}
+
 #[no_mangle]
-extern "C" fn rust_CM_Trace(
-    trace: *mut (),
+unsafe extern "C" fn rust_CM_Trace(
+    result: *mut trace_t,
     start: &vec3_t,
     end: &vec3_t,
     mins: Option<&vec3_t>,
@@ -1033,13 +1041,17 @@ extern "C" fn rust_CM_Trace(
     origin: &vec3_t,
     brushmask: i32,
     capsule:  i32,
-    sphere: *const ()
+    sphere: *const (),
+    expected_result: &trace_t_interop,
+    expected_result_size: usize
 ) {
+    loop {
+    assert_eq!(expected_result_size, core::mem::size_of::<trace_t_interop>());
+let expected_result: trace_t = expected_result.clone().into();
     let mut g = cm();
     if let Some(ref mut cm) = *g {
-        debug!("rust_CM_Trace: model={} start={:?} end={:?}",  model, start, end);
         let mut client = ClipMapClient::new(&cm);
-        CM_Trace(cm, &mut client, 
+        let rust_result = CM_Trace(cm, &mut client, 
             *start,
             *end,
             mins.map(|v| *v),
@@ -1049,10 +1061,24 @@ extern "C" fn rust_CM_Trace(
             brushmask,
             capsule,
             None /*sphere*/);
+
+        if expected_result == rust_result {
+            trace!("traces match");
+        } else {
+            debug!("rust_CM_Trace: model={} start={:?} end={:?}",  model, start, end);
+            debug!("traces do not match");
+            debug!("expected: {:#?}", expected_result);
+            debug!("actual  : {:#?}", rust_result);
+            dbg_check("allsolid", rust_result.allsolid, expected_result.allsolid);
+            // continue;
+        }
+
+        core::ptr::write(result, rust_result);
     } else {
         warn!("global clip map is not set");
     }
-
+        break;
+    }
 }
 
 fn CM_Trace(
@@ -1250,7 +1276,7 @@ fn CM_Trace(
     assert!(
         tw.trace.allsolid || tw.trace.fraction == 1.0 || (tw.trace.plane.normal).length2() > 0.9999
     );
-	debug!("trace done: {:?}", tw.trace);
+	//debug!("trace done: {:?}", tw.trace);
     return tw.trace;
 }
 
