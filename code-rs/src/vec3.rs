@@ -1,43 +1,37 @@
-use crate::num_utils::fmin;
-use std::ops::{Add, AddAssign, Index, IndexMut, Mul, Sub, SubAssign};
+use crate::num_utils::{fmin, fmax};
 
 pub type vec_t = f32;
 
 // see game/q_shared.h
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
-#[repr(C)]
-pub struct vec3_t {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-}
+pub struct vec3_t(pub [f32; 3]);
+
+pub const vec3_origin: vec3_t = vec3_t([0.0, 0.0, 0.0]);
 
 pub fn v3(x: f32, y: f32, z: f32) -> vec3_t {
-    vec3_t { x, y, z }
+    vec3_t([x, y, z])
 }
 
 impl vec3_t {
-    pub const ORIGIN: vec3_t = vec3_t {
-        x: 0.0,
-        y: 0.0,
-        z: 0.0,
-    };
+    pub const ORIGIN: vec3_t = vec3_t([0.0, 0.0, 0.0]);
 
     pub fn from_scalar(f: f32) -> vec3_t {
-        vec3_t { x: f, y: f, z: f }
+        vec3_t([f, f, f])
     }
 
     pub fn dot(self, other: vec3_t) -> f32 {
-        self.x * other.x + self.y * other.y + self.z * other.z
+        self.0[0] * other.0[0] +
+        self.0[1] * other.0[1] +
+        self.0[2] * other.0[2]
     }
 
     pub fn scale(self, s: vec_t) -> vec3_t {
-        vec3_t {
-            x: self.x * s,
-            y: self.y * s,
-            z: self.z * s,
-        }
+        vec3_t([
+            self.0[0] * s,
+            self.0[1] * s,
+            self.0[2] * s
+        ])
     }
 
     pub fn length(self) -> vec_t {
@@ -57,27 +51,28 @@ impl vec3_t {
         }
     }
 
-    pub fn map(self, f: impl Fn(f32) -> f32) -> vec3_t {
-        vec3_t {
-            x: f(self.x),
-            y: f(self.y),
-            z: f(self.z),
-        }
+    pub fn map_to_array<T>(self, f: impl Fn(f32) -> T) -> [T; 3] {
+        [f(self.0[0]), f(self.0[1]), f(self.0[2])]
     }
 
-    pub fn map_2(f: impl Fn(f32, f32) -> f32, a: vec3_t, b: vec3_t) -> vec3_t {
-        vec3_t {
-            x: f(a.x, b.x),
-            y: f(a.y, b.y),
-            z: f(a.z, b.z),
-        }
+    pub fn map(self, f: impl Fn(f32) -> f32) -> vec3_t {
+        vec3_t(self.map_to_array(f))
     }
+
+    pub fn map2(self, other: vec3_t, f: impl Fn(f32, f32) -> f32) -> vec3_t {
+        vec3_t([
+            f(self.0[0], other.0[0]),
+            f(self.0[1], other.0[1]),
+            f(self.0[2], other.0[2]),
+        ])
+    }
+
     pub fn map_3(f: impl Fn(f32, f32, f32) -> f32, a: vec3_t, b: vec3_t, c: vec3_t) -> vec3_t {
-        vec3_t {
-            x: f(a.x, b.x, c.x),
-            y: f(a.y, b.y, c.y),
-            z: f(a.z, b.z, c.z),
-        }
+        vec3_t([
+            f(a[0], b[0], c[0]),
+            f(a[1], b[1], c[1]),
+            f(a[2], b[2], c[2]),
+        ])
     }
 
     pub fn mid(self: vec3_t, b: vec3_t) -> vec3_t {
@@ -86,116 +81,106 @@ impl vec3_t {
 
     pub fn is_close_to(self, other: vec3_t, epsilon: vec_t) -> bool {
         let d = self - other;
-        d.x.abs() < epsilon && d.y.abs() < epsilon && d.z.abs() < epsilon
+        d[0].abs() < epsilon && d[1].abs() < epsilon && d[2].abs() < epsilon
     }
 
     pub fn min(self, other: vec3_t) -> vec3_t {
-        vec3_t {
-            x: fmin(self.x, other.x),
-            y: fmin(self.y, other.y),
-            z: fmin(self.z, other.z),
-        }
+        self.map2(other, fmin)
     }
     pub fn max(self, other: vec3_t) -> vec3_t {
-        vec3_t {
-            x: fmin(self.x, other.x),
-            y: fmin(self.y, other.y),
-            z: fmin(self.z, other.z),
-        }
+        self.map2(other, fmax)
     }
 }
 
 impl std::ops::Neg for vec3_t {
     type Output = vec3_t;
     fn neg(self) -> Self::Output {
-        vec3_t {
-            x: -self.x,
-            y: -self.y,
-            z: -self.z,
-        }
+        vec3_t([
+            -self.0[0],
+            -self.0[1],
+            -self.0[2],
+        ])
     }
 }
 
-impl Index<usize> for vec3_t {
+impl core::ops::Index<usize> for vec3_t {
     type Output = vec_t;
     fn index(&self, index: usize) -> &vec_t {
-        match index {
-            0 => &self.x,
-            1 => &self.y,
-            2 => &self.z,
-            _ => panic!(),
-        }
+        &self.0[index]
     }
 }
 
-impl IndexMut<usize> for vec3_t {
+impl core::ops::IndexMut<usize> for vec3_t {
     fn index_mut(&mut self, index: usize) -> &mut vec_t {
-        match index {
-            0 => &mut self.x,
-            1 => &mut self.y,
-            2 => &mut self.z,
-            _ => panic!(),
-        }
+        &mut self.0[index]
     }
 }
 
-impl Add<vec3_t> for vec3_t {
+impl core::ops::Add<vec3_t> for vec3_t {
     type Output = vec3_t;
     fn add(self, other: vec3_t) -> vec3_t {
-        vec3_t {
-            x: self.x + other.x,
-            y: self.y + other.y,
-            z: self.z + other.z,
-        }
+        vec3_t([
+            self[0] + other[0],
+            self[1] + other[1],
+            self[2] + other[2]
+        ])
     }
 }
 
-impl AddAssign<vec3_t> for vec3_t {
+impl core::ops::AddAssign<vec3_t> for vec3_t {
     fn add_assign(&mut self, other: vec3_t) {
-        self.x += other.x;
-        self.y += other.y;
-        self.z += other.z;
+        self.0[0] += other.0[0];
+        self.0[1] += other.0[1];
+        self.0[2] += other.0[2];
     }
 }
 
-impl Sub<vec3_t> for vec3_t {
+impl core::ops::Sub<vec3_t> for vec3_t {
     type Output = vec3_t;
     fn sub(self, other: vec3_t) -> vec3_t {
-        vec3_t {
-            x: self.x - other.x,
-            y: self.y - other.y,
-            z: self.z - other.z,
-        }
+        vec3_t([
+            self[0] - other[0],
+            self[1] - other[1],
+            self[2] - other[2]
+        ])
     }
 }
 
-impl SubAssign<vec3_t> for vec3_t {
+impl core::ops::SubAssign<vec3_t> for vec3_t {
     fn sub_assign(&mut self, other: vec3_t) {
-        self.x -= other.x;
-        self.y -= other.y;
-        self.z -= other.z;
+        self.0[0] -= other.0[0];
+        self.0[1] -= other.0[1];
+        self.0[2] -= other.0[2];
     }
 }
 
-impl Mul<vec_t> for vec3_t {
+impl core::ops::Mul<vec_t> for vec3_t {
     type Output = vec3_t;
     fn mul(self, other: vec_t) -> vec3_t {
-        vec3_t {
-            x: self.x * other,
-            y: self.y * other,
-            z: self.z * other,
-        }
+        vec3_t([
+            self[0] * other,
+            self[1] * other,
+            self[2] * other
+        ])
     }
 }
 
-impl Mul<vec3_t> for vec_t {
+impl core::ops::Mul<vec3_t> for vec_t {
     type Output = vec3_t;
     fn mul(self, other: vec3_t) -> vec3_t {
-        vec3_t {
-            x: self * other.x,
-            y: self * other.y,
-            z: self * other.z,
-        }
+        vec3_t([
+            self * other[0],
+            self * other[1],
+            self * other[2]
+        ])
+    }
+}
+
+impl core::ops::MulAssign<vec_t> for vec3_t {
+    fn mul_assign(&mut self, other: vec_t) {
+        self[0] *= other;
+        self[1] *= other;
+        self[2] *= other;
     }
 }
 
@@ -225,11 +210,7 @@ pub fn VectorScale(v: vec3_t, s: f32) -> vec3_t {
 
 // last arg was output
 pub fn VectorMA(v: vec3_t, s: f32, b: vec3_t) -> vec3_t {
-    vec3_t {
-        x: v.x + b.x * s,
-        y: v.y + b.y * s,
-        z: v.z + b.z * s,
-    }
+    v + b * s
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -239,16 +220,14 @@ pub struct Vec3MinMax {
 }
 
 pub fn VectorSet(x: vec_t, y: vec_t, z: vec_t) -> vec3_t {
-    vec3_t { x, y, z }
+    vec3_t([x, y, z])
 }
 
 pub fn VectorNormalize_mut(v: &mut vec3_t) -> f32 {
     let length = v.length();
     if length != 0.0 {
         let ilength = 1.0 / length;
-        v.x *= ilength;
-        v.y *= ilength;
-        v.z *= ilength;
+        *v *= ilength;
     }
     length
 }
@@ -284,15 +263,21 @@ pub fn VectorNormalize2_mut(v: &mut vec3_t) -> f32 {
 }
 
 pub fn CrossProduct(v1: vec3_t, v2: vec3_t) -> vec3_t {
-    vec3_t {
-        x: v1.y * v2.z - v1.z * v2.y,
-        y: v1.z * v2.x - v1.x * v2.z,
-        z: v1.x * v2.y - v1.y * v2.x,
-    }
+    vec3_t([
+        v1[1] * v2[2] - v1[2] * v2[1],
+        v1[2] * v2[0] - v1[0] * v2[2],
+        v1[0] * v2[1] - v1[1] * v2[0],
+    ])
 }
 
 pub fn VectorLength(v: vec3_t) -> vec_t {
     v.dot(v).sqrt()
+}
+
+pub fn get_sign_bits(v: vec3_t) -> u8 {
+    ((v[0] < 0.0) as u8) |          //
+    (((v[1] < 0.0) as u8) << 1) |   //
+    (((v[2] < 0.0) as u8) << 2)     //
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -306,9 +291,9 @@ pub struct vec4_t {
 impl vec4_t {
     pub fn from_vec3_w(v: vec3_t, w: vec_t) -> vec4_t {
         vec4_t {
-            x: v.x,
-            y: v.y,
-            z: v.z,
+            x: v[0],
+            y: v[1],
+            z: v[2],
             w: w,
         }
     }

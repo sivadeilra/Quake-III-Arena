@@ -37,7 +37,7 @@ pub const ON_EPSILON: f32 = 0.1;
 
 fn pw(w: &winding_t) {
     for p in w.iter() {
-        println!("({:5.1}, {:5.1}, {:5.1})", p.x, p.y, p.z);
+        println!("({:5.1}, {:5.1}, {:5.1})", p[0], p[1], p[2]);
     }
 }
 
@@ -99,24 +99,11 @@ pub fn WindingArea(w: &winding_slice) -> vec_t {
 
 // was: (w, mins, maxs)
 pub fn WindingBounds(w: &winding_t) -> Vec3MinMax {
-    let mut mins = vec3_t {
-        x: MAX_MAP_BOUNDS,
-        y: MAX_MAP_BOUNDS,
-        z: MAX_MAP_BOUNDS,
-    };
-    let mut maxs = vec3_t {
-        x: -MAX_MAP_BOUNDS,
-        y: -MAX_MAP_BOUNDS,
-        z: -MAX_MAP_BOUNDS,
-    };
+    let mut mins = vec3_t([MAX_MAP_BOUNDS, MAX_MAP_BOUNDS, MAX_MAP_BOUNDS]);
+    let mut maxs = vec3_t([-MAX_MAP_BOUNDS, -MAX_MAP_BOUNDS, -MAX_MAP_BOUNDS]);
     for p in w.iter() {
-        mins.x = mins.x.min(p.x);
-        mins.y = mins.y.min(p.y);
-        mins.z = mins.z.min(p.z);
-
-        maxs.x = maxs.x.max(p.x);
-        maxs.y = maxs.y.max(p.y);
-        maxs.z = maxs.z.max(p.z);
+        mins = mins.min(*p);
+        maxs = maxs.max(*p);
     }
 
     Vec3MinMax { mins, maxs }
@@ -134,30 +121,18 @@ pub fn WindingCenter(w: &winding_t) -> vec3_t {
 
 pub fn BaseWindingForPlane(normal: vec3_t, dist: vec_t) -> winding_t {
     // find the major axis
-    let v_x = normal.x.abs();
-    let v_y = normal.y.abs();
-    let v_z = normal.z.abs();
+    let v_x = normal[0].abs();
+    let v_y = normal[1].abs();
+    let v_z = normal[2].abs();
     let vup = if v_x > v_y && v_x > v_z {
         // x is largest
-        vec3_t {
-            x: 0.0,
-            y: 0.0,
-            z: 1.0,
-        }
+        vec3_t::unit(2)
     } else if v_y > v_z {
         // y is largest
-        vec3_t {
-            x: 0.0,
-            y: 0.0,
-            z: 1.0,
-        }
+        vec3_t::unit(2)
     } else {
         // z is largest
-        vec3_t {
-            x: 1.0,
-            y: 0.0,
-            z: 0.0,
-        }
+        vec3_t::unit(0)
     };
 
     let org = normal.scale(dist);

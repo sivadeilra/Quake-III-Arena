@@ -62,20 +62,20 @@ pub type mat3x3 = [vec3_t; 3];
 
 pub fn RotatePoint_mut(v: &mut vec3_t, matrix: &mat3x3) {
     // bk: FIXME
-    let result = vec3_t {
-        x: matrix[0].dot(*v),
-        y: matrix[1].dot(*v),
-        z: matrix[2].dot(*v),
-    };
+    let result = vec3_t([
+        matrix[0].dot(*v),
+        matrix[1].dot(*v),
+        matrix[2].dot(*v),
+    ]);
     *v = result;
 }
 
 pub fn TransposeMatrix(m: &mat3x3) -> mat3x3 {
     // bk: FIXME
     [
-        v3(m[0].x, m[1].x, m[2].x),
-        v3(m[0].y, m[1].y, m[2].y),
-        v3(m[0].z, m[1].z, m[2].z),
+        v3(m[0][0], m[1][0], m[2][0]),
+        v3(m[0][1], m[1][1], m[2][1]),
+        v3(m[0][2], m[1][2], m[2][2]),
     ]
 }
 

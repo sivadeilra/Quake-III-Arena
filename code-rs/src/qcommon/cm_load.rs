@@ -32,7 +32,7 @@ use crate::qcommon::md4::Com_BlockChecksum;
 use crate::qfiles::*;
 use crate::range_len;
 use crate::zerocopy::*;
-use log::{debug, warn, info};
+use log::{debug, info};
 use std::ops::Range;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
@@ -60,10 +60,6 @@ pub fn SetPlaneSignbits (cplane_t *out) {
 }
 #endif //BSPC
 */
-
-pub fn get_sign_bits(v: vec3_t) -> u8 {
-    ((v.x < 0.0) as u8) | (((v.y < 0.0) as u8) << 1) | (((v.z < 0.0) as u8) << 2)
-}
 
 // to allow boxes to be treated as brush models, we allocate
 // some extra indexes along with those needed by the map

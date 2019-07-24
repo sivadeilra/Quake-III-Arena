@@ -219,9 +219,7 @@ CM_SignbitsForNormal
 =================
 */
 fn CM_SignbitsForNormal(normal: vec3_t) -> i32 {
-    (((normal.x < 0.0) as i32) << 0)
-        | (((normal.y < 0.0) as i32) << 1)
-        | (((normal.z < 0.0) as i32) << 2)
+    get_sign_bits(normal) as i32
 }
 
 /*
@@ -446,7 +444,8 @@ fn near_zero(f: f32) -> bool {
 
 fn CM_ComparePoints(a: vec3_t, b: vec3_t) -> bool {
     let vd = a - b;
-    near_zero(vd.x) && near_zero(vd.y) && near_zero(vd.z)
+    let nears = vd.map_to_array(near_zero);
+    nears[0] && nears[1] && nears[2]
 }
 
 /*
@@ -1258,13 +1257,13 @@ pub fn CM_GeneratePatchCollide(width: usize, height: usize, points: &[vec3_t]) -
     let mut pf = CM_PatchCollideFromGrid(&grid);
 
     // expand by one unit for epsilon purposes
-    bounds.mins.x -= 1.0;
-    bounds.mins.y -= 1.0;
-    bounds.mins.z -= 1.0;
+    bounds.mins[0] -= 1.0;
+    bounds.mins[1] -= 1.0;
+    bounds.mins[2] -= 1.0;
 
-    bounds.maxs.x += 1.0;
-    bounds.maxs.y += 1.0;
-    bounds.maxs.z += 1.0;
+    bounds.maxs[0] += 1.0;
+    bounds.maxs[1] += 1.0;
+    bounds.maxs[2] += 1.0;
 
     pf.bounds = bounds;
     pf
