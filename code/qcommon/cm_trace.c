@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 #include "cm_local.h"
+#include "port_tracer.h"
 
 // always use bbox vs. bbox collision and never capsule vs. bbox or vice versa
 //#define ALWAYS_BBOX_VS_BBOX
@@ -1140,12 +1141,8 @@ void CM_TraceThroughTree( traceWork_t *tw, int num, float p1f, float p2f, vec3_t
 
 //======================================================================
 
-void __cdecl rust_CM_Trace(trace_t* results, const vec3_t start, const vec3_t end, vec3_t mins, vec3_t maxs,
-	clipHandle_t model, const vec3_t origin, int brushmask, int capsule, sphere_t* sphere,
-    
-    // expected results
-    const trace_t* expected_results,
-    size_t expected_results_size
+void __cdecl rust_tracing_CM_Trace(trace_t* results, const vec3_t start, const vec3_t end, vec3_t mins, vec3_t maxs,
+	clipHandle_t model, const vec3_t origin, int brushmask, int capsule, sphere_t* sphere
     );
 
 /*
@@ -1153,7 +1150,13 @@ void __cdecl rust_CM_Trace(trace_t* results, const vec3_t start, const vec3_t en
 CM_Trace
 ==================
 */
-void CM_Trace( trace_t *results, const vec3_t start, const vec3_t end, vec3_t mins, vec3_t maxs,
+void CM_Trace(trace_t* results, const vec3_t start, const vec3_t end, vec3_t mins, vec3_t maxs,
+    clipHandle_t model, const vec3_t origin, int brushmask, int capsule, sphere_t* sphere) {
+    rust_tracing_CM_Trace(results, start, end, mins, maxs, model, origin, brushmask, capsule, sphere);
+}
+
+// this is called by Rust code in cm_trace.rs
+void __cdecl real_CM_Trace( trace_t *results, const vec3_t start, const vec3_t end, vec3_t mins, vec3_t maxs,
 						  clipHandle_t model, const vec3_t origin, int brushmask, int capsule, sphere_t *sphere ) {
 	int			i;
 	traceWork_t	tw;
@@ -1271,11 +1274,15 @@ void CM_Trace( trace_t *results, const vec3_t start, const vec3_t end, vec3_t mi
 		}
 	}
 
+    trace_str("CM_Trace start");
+
 	//
 	// check for position test special case
 	//
 	if (start[0] == end[0] && start[1] == end[1] && start[2] == end[2]) {
+        trace_str("start == end");
 		if ( model ) {
+            trace_str("model != 0");
 #ifdef ALWAYS_BBOX_VS_BBOX // bk010201 - FIXME - compile time flag?
 			if ( model == BOX_MODEL_HANDLE || model == CAPSULE_MODEL_HANDLE) {
 				tw.sphere.use = qfalse;
@@ -1289,27 +1296,34 @@ void CM_Trace( trace_t *results, const vec3_t start, const vec3_t end, vec3_t mi
 			else
 #endif
 			if ( model == CAPSULE_MODEL_HANDLE ) {
-				if ( tw.sphere.use ) {
-					CM_TestCapsuleInCapsule( &tw, model );
+                trace_str("model == CAPSULE_MODEL_HANDLE");
+                if ( tw.sphere.use ) {
+                    trace_str("tw.sphere.use, CM_TestCapsuleInCapsule");
+                    CM_TestCapsuleInCapsule( &tw, model );
 				}
 				else {
+                    trace_str("CM_TestBoundingBoxInCapsule");
 					CM_TestBoundingBoxInCapsule( &tw, model );
 				}
 			}
 			else {
+                trace_str("CM_TestInLeaf");
 				CM_TestInLeaf( &tw, &cmod->leaf );
 			}
 		} else {
-			CM_PositionTest( &tw );
+            trace_str("CM_PositionTest");
+            CM_PositionTest( &tw );
 		}
 	} else {
 		//
 		// check for point special case
 		//
 		if ( tw.size[0][0] == 0 && tw.size[0][1] == 0 && tw.size[0][2] == 0 ) {
+            trace_str("isPoint = true");
 			tw.isPoint = qtrue;
 			VectorClear( tw.extents );
 		} else {
+            trace_str("isPoint = false");
 			tw.isPoint = qfalse;
 			tw.extents[0] = tw.size[1][0];
 			tw.extents[1] = tw.size[1][1];
@@ -1320,6 +1334,7 @@ void CM_Trace( trace_t *results, const vec3_t start, const vec3_t end, vec3_t mi
 		// general sweeping through world
 		//
 		if ( model ) {
+            trace_str("model != 0");
 #ifdef ALWAYS_BBOX_VS_BBOX
 			if ( model == BOX_MODEL_HANDLE || model == CAPSULE_MODEL_HANDLE) {
 				tw.sphere.use = qfalse;
@@ -1333,18 +1348,23 @@ void CM_Trace( trace_t *results, const vec3_t start, const vec3_t end, vec3_t mi
 			else
 #endif
 			if ( model == CAPSULE_MODEL_HANDLE ) {
-				if ( tw.sphere.use ) {
+                trace_str("model == CAPSULE_MODEL_HANDLE");
+                if ( tw.sphere.use ) {
+                    trace_str("tw.sphere.use, CM_TraceCapsuleThroughCapsule");
 					CM_TraceCapsuleThroughCapsule( &tw, model );
 				}
 				else {
-					CM_TraceBoundingBoxThroughCapsule( &tw, model );
+                    trace_str("CM_TraceBoundingBoxThroughCapsule");
+                    CM_TraceBoundingBoxThroughCapsule( &tw, model );
 				}
 			}
 			else {
+                trace_str("CM_TraceThroughLeaf");
 				CM_TraceThroughLeaf( &tw, &cmod->leaf );
 			}
 		} else {
-			CM_TraceThroughTree( &tw, 0, 0, 1, tw.start, tw.end );
+            trace_str("CM_TraceThroughTree");
+            CM_TraceThroughTree( &tw, 0, 0, 1, tw.start, tw.end );
 		}
 	}
 
@@ -1363,10 +1383,23 @@ void CM_Trace( trace_t *results, const vec3_t start, const vec3_t end, vec3_t mi
         assert(tw.trace.allsolid ||
                tw.trace.fraction == 1.0 ||
                VectorLengthSquared(tw.trace.plane.normal) > 0.9999);
-	*results = tw.trace;
 
-    rust_CM_Trace(results, start, end, mins, maxs, model, origin, brushmask, capsule, sphere, &tw.trace, sizeof(trace_t));
+    trace_str("CM_Trace results");
+    trace_str("allsolid");
+    trace_i32(tw.trace.allsolid);
+    trace_str("startsolid");
+    trace_i32(tw.trace.startsolid);
+    trace_str("fraction");
+    trace_f32(tw.trace.fraction);
+    // missing
+    trace_str("surfaceFlags");
+    trace_i32(tw.trace.surfaceFlags);
+    trace_str("contents");
+    trace_i32(tw.trace.contents);
+    trace_str("entityNum");
+    trace_i32(tw.trace.entityNum);
 
+    *results = tw.trace;
 }
 
 /*

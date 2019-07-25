@@ -32,14 +32,14 @@ use crate::qcommon::md4::Com_BlockChecksum;
 use crate::qfiles::*;
 use crate::range_len;
 use crate::zerocopy::*;
+use lazy_static::lazy_static;
 use log::{debug, info};
 use std::ops::Range;
 use std::sync::Mutex;
-use lazy_static::lazy_static;
 
 lazy_static! {
-	pub static ref GLOBAL_CLIP_MAP: Mutex<Option<clipMap_t>> = Mutex::new(None);
-} 
+    pub static ref GLOBAL_CLIP_MAP: Mutex<Option<clipMap_t>> = Mutex::new(None);
+}
 
 /*
 #ifdef BSPC
@@ -285,7 +285,7 @@ struct LoadLeafsOutput {
 
 fn CMod_LoadLeafs(lump: lump_t, file: &FileLoader) -> Result<LoadLeafsOutput, Error> {
     let mut max_area: i32 = 0;
-    let mut max_cluster: i32= 0;
+    let mut max_cluster: i32 = 0;
     let leafs: Vec<cLeaf_t> = file
         .get_lump_required_as_slice::<dleaf_t>(lump)?
         .iter()
@@ -305,8 +305,8 @@ fn CMod_LoadLeafs(lump: lump_t, file: &FileLoader) -> Result<LoadLeafsOutput, Er
         })
         .collect();
 
-	    let num_clusters = max_cluster + 1;
-		let num_areas = max_area + 1;
+    let num_clusters = max_cluster + 1;
+    let num_areas = max_area + 1;
 
     Ok(LoadLeafsOutput {
         leafs,
@@ -487,7 +487,7 @@ fn CM_Checksum(header: &dheader_t, file: &FileLoader) -> Result<u32, Error> {
 }
 
 /// Loads in the map and all submodels
-pub fn CM_LoadMap(name: &str, clientload: bool, _checksum: &mut i32) -> Result<clipMap_t, Error> {
+pub fn CM_LoadMap(name: &str, _clientload: bool, _checksum: &mut i32) -> Result<clipMap_t, Error> {
     assert!(!name.is_empty());
 
     /*
@@ -538,7 +538,7 @@ pub fn CM_LoadMap(name: &str, clientload: bool, _checksum: &mut i32) -> Result<c
     CM_LoadMapFromSlice(name, &buf)
 }
 
-pub fn CM_LoadMapFromSlice(name: &str, buf: &[u8]) ->  Result<clipMap_t, Error> {
+pub fn CM_LoadMapFromSlice(name: &str, buf: &[u8]) -> Result<clipMap_t, Error> {
     // last_checksum = LittleLong(Com_BlockChecksum(buf, length));
     // *checksum = last_checksum;
     info!("CM_LoadMap( {}, {} )", name, buf.len());
@@ -639,7 +639,7 @@ pub fn CM_LoadMapFromSlice(name: &str, buf: &[u8]) ->  Result<clipMap_t, Error> 
 
     // allow this to be cached if it is loaded by the server
     // if !clientload {
-        cm.name = name.to_string();
+    cm.name = name.to_string();
     // }
 
     Ok(cm)
@@ -648,13 +648,13 @@ pub fn CM_LoadMapFromSlice(name: &str, buf: &[u8]) ->  Result<clipMap_t, Error> 
 #[no_mangle]
 unsafe extern "C" fn rust_LoadMap(data: *const u8, len: usize) {
     let s = core::slice::from_raw_parts(data, len);
-	debug!("loading map, data len = {} bytes", len);
+    debug!("loading map, data len = {} bytes", len);
     let new_cm = CM_LoadMapFromSlice("", s).unwrap();
     *cm() = Some(new_cm);
 }
 
 pub fn cm() -> std::sync::MutexGuard<'static, Option<clipMap_t>> {
-	GLOBAL_CLIP_MAP.lock().unwrap()
+    GLOBAL_CLIP_MAP.lock().unwrap()
 }
 
 /*
@@ -730,7 +730,11 @@ pub fn CM_InitBoxHull(cm: &mut clipMap_t) {
         shaderNum: -1,
     });
 
-    debug!("CM_InitBoxHull: box_brush_index = {}, brushes.len = {}", cm.box_brush_index, cm.brushes.len());
+    debug!(
+        "CM_InitBoxHull: box_brush_index = {}, brushes.len = {}",
+        cm.box_brush_index,
+        cm.brushes.len()
+    );
 
     let box_model = cmodel_t {
         leaf: cLeaf_t {

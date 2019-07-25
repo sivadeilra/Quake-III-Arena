@@ -1,10 +1,11 @@
-use crate::num_utils::{fmin, fmax};
+use crate::num_utils::{fmax, fmin};
 
 pub type vec_t = f32;
 
 // see game/q_shared.h
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[repr(C)]
 pub struct vec3_t(pub [f32; 3]);
 
 pub const vec3_origin: vec3_t = vec3_t([0.0, 0.0, 0.0]);
@@ -21,17 +22,11 @@ impl vec3_t {
     }
 
     pub fn dot(self, other: vec3_t) -> f32 {
-        self.0[0] * other.0[0] +
-        self.0[1] * other.0[1] +
-        self.0[2] * other.0[2]
+        self.0[0] * other.0[0] + self.0[1] * other.0[1] + self.0[2] * other.0[2]
     }
 
     pub fn scale(self, s: vec_t) -> vec3_t {
-        vec3_t([
-            self.0[0] * s,
-            self.0[1] * s,
-            self.0[2] * s
-        ])
+        vec3_t([self.0[0] * s, self.0[1] * s, self.0[2] * s])
     }
 
     pub fn length(self) -> vec_t {
@@ -95,11 +90,7 @@ impl vec3_t {
 impl std::ops::Neg for vec3_t {
     type Output = vec3_t;
     fn neg(self) -> Self::Output {
-        vec3_t([
-            -self.0[0],
-            -self.0[1],
-            -self.0[2],
-        ])
+        vec3_t([-self.0[0], -self.0[1], -self.0[2]])
     }
 }
 
@@ -119,11 +110,7 @@ impl core::ops::IndexMut<usize> for vec3_t {
 impl core::ops::Add<vec3_t> for vec3_t {
     type Output = vec3_t;
     fn add(self, other: vec3_t) -> vec3_t {
-        vec3_t([
-            self[0] + other[0],
-            self[1] + other[1],
-            self[2] + other[2]
-        ])
+        vec3_t([self[0] + other[0], self[1] + other[1], self[2] + other[2]])
     }
 }
 
@@ -138,11 +125,7 @@ impl core::ops::AddAssign<vec3_t> for vec3_t {
 impl core::ops::Sub<vec3_t> for vec3_t {
     type Output = vec3_t;
     fn sub(self, other: vec3_t) -> vec3_t {
-        vec3_t([
-            self[0] - other[0],
-            self[1] - other[1],
-            self[2] - other[2]
-        ])
+        vec3_t([self[0] - other[0], self[1] - other[1], self[2] - other[2]])
     }
 }
 
@@ -157,22 +140,14 @@ impl core::ops::SubAssign<vec3_t> for vec3_t {
 impl core::ops::Mul<vec_t> for vec3_t {
     type Output = vec3_t;
     fn mul(self, other: vec_t) -> vec3_t {
-        vec3_t([
-            self[0] * other,
-            self[1] * other,
-            self[2] * other
-        ])
+        vec3_t([self[0] * other, self[1] * other, self[2] * other])
     }
 }
 
 impl core::ops::Mul<vec3_t> for vec_t {
     type Output = vec3_t;
     fn mul(self, other: vec3_t) -> vec3_t {
-        vec3_t([
-            self * other[0],
-            self * other[1],
-            self * other[2]
-        ])
+        vec3_t([self * other[0], self * other[1], self * other[2]])
     }
 }
 
@@ -287,9 +262,7 @@ pub fn VectorLength(v: vec3_t) -> vec_t {
 }
 
 pub fn get_sign_bits(v: vec3_t) -> u8 {
-    ((v[0] < 0.0) as u8) |          //
-    (((v[1] < 0.0) as u8) << 1) |   //
-    (((v[2] < 0.0) as u8) << 2)     //
+    ((v[0] < 0.0) as u8) | (((v[1] < 0.0) as u8) << 1) | (((v[2] < 0.0) as u8) << 2) //
 }
 
 #[derive(Copy, Clone, Debug)]

@@ -154,9 +154,8 @@ fn CM_BoxBrushes(
                 continue; // already checked this brush in another leaf
             }
             let b = &cm.brushes[brushnum];
-            let any_bounds_misordered = (0..3).any(|i| {
-                b.bounds.mins[i] >= bounds.maxs[i] || b.bounds.maxs[i] <= bounds.mins[i]
-            });
+            let any_bounds_misordered = (0..3)
+                .any(|i| b.bounds.mins[i] >= bounds.maxs[i] || b.bounds.maxs[i] <= bounds.mins[i]);
             if any_bounds_misordered {
                 continue;
             }

@@ -1458,7 +1458,7 @@ pub fn CM_TraceThroughPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) {
             let startp;
             let endp;
             let offset;
-            if tw.sphere.use_ {
+            if tw.sphere.use_.into() {
                 // adjust the plane distance apropriately for radius
                 plane.dist += tw.sphere.radius;
 
@@ -1498,7 +1498,7 @@ pub fn CM_TraceThroughPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) {
             let startp;
             let endp;
             let offset;
-            if tw.sphere.use_ {
+            if tw.sphere.use_.into() {
                 // adjust the plane distance apropriately for radius
                 plane.dist += tw.sphere.radius;
                 // find the closest point on the capsule to the plane
@@ -1578,7 +1578,7 @@ pub fn CM_PositionTestInPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) 
             let planes = &pc.planes[facet.surfacePlane as usize];
             let startp;
             let mut plane = planes.plane;
-            if tw.sphere.use_ {
+            if tw.sphere.use_.into() {
                 // adjust the plane distance apropriately for radius
                 plane.dist += tw.sphere.radius;
 
@@ -1608,7 +1608,7 @@ pub fn CM_PositionTestInPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) 
                 planes.plane
             };
             let startp;
-            if tw.sphere.use_ {
+            if tw.sphere.use_.into() {
                 // adjust the plane distance apropriately for radius
                 plane.dist += tw.sphere.radius;
 

@@ -1,110 +1,153 @@
+//!
+//! The rendezvous protocol allows two tracers to rendezvous and compare
+//! two values, one from each tracer. The protocol has two participants, PRIMARY and SECONDARY.
+//! PRIMARY and SECONDARY have different behaviors.
 
+use lazy_static::lazy_static;
+use log::{debug, error, info, trace};
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::fmt::Write;
+use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::{JoinHandle, Thread};
-use lazy_static::lazy_static;
-use log::{info, debug, error};
+
+enum FooMsg {
+    Ack(Ack)
+}
+
+struct Ack {
+    max_history: usize,
+    total_values: u64,
+    value: TraceValue
+}
+
+enum MsgToPrimary {
+    Value(TraceValue),
+}
+
+enum MsgToSecondary {
+    Ack,
+}
 
 struct Session {
-    next_value: Option<TraceValue>,
     max_history: usize,
     history: VecDeque<HistoryEntry>,
-    total_values: u64
+    total_values: u64,
 }
 
-#[derive(Clone)]
+struct PrimaryRole {
+    rx: Receiver<MsgToPrimary>,
+    tx: SyncSender<MsgToSecondary>,
+    session: Mutex<Session>,
+}
+
+struct SecondaryRole {
+    rx: Receiver<MsgToSecondary>,
+    tx: SyncSender<MsgToPrimary>,
+}
+
+enum Role {
+    Primary(PrimaryRole),
+    Secondary(SecondaryRole),
+}
+
 pub struct Tracer {
-    session_ptr: Arc<(Mutex<Session>, Condvar)>,
-    is_ref: bool,
-    name: &'static str
+    name: &'static str,
+    role: Role,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq)]
 pub enum TraceValue {
     I32(i32),
     U32(u32),
     String(String),
     Str(&'static str),
+    F32(f32),
 }
 
-use core::fmt::Write;
-impl core::fmt::Debug for TraceValue {
+const TRACE_VALUE_F32_EPSILON: f32 = 0.00001;
+
+impl TraceValue {
+    fn nearly_eq(&self, other: &Self) -> bool {
+        if self == other {
+            return true;
+        }
+        match (self, other) {
+            (TraceValue::F32(a), TraceValue::F32(b)) => (a - b).abs() < TRACE_VALUE_F32_EPSILON,
+            _ => false,
+        }
+    }
+}
+
+use core::fmt::Debug;
+impl Debug for TraceValue {
     fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             TraceValue::I32(n) => write!(fmt, "{:?}", n),
             TraceValue::U32(n) => write!(fmt, "{:?}", n),
             TraceValue::Str(s) => write!(fmt, "{:?}", s),
+            TraceValue::F32(f) => write!(fmt, "{:?}", f),
             TraceValue::String(s) => write!(fmt, "{:?}", s),
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 struct HistoryEntry {
     value: TraceValue,
     // call stack?
 }
 
-/*
-lazy_static::lazy_static! {
-
-// static ref TRACE_STATE: Mutex<Option<TraceSession>> = Mutex::new(None);
-static ref TRACE_GLOBALS: TraceGlobals = TraceGlobals {
-    data: Mutex::new(TraceData {
-        history: Vec::new(),
-        next_value: None,
-        test_thread_joiner: None
-    }),
-    condvar: Condvar::new()
-};
-}
-
-*/
-
-
 impl Tracer {
     pub fn trace_value(&self, value: TraceValue) {
-        info!("{}: trace_value: {:?}", self.name, value);
-        use std::fmt::Write;
-        let mut g = self.session_ptr.0.lock().unwrap();
-        let session = &mut *g;
-        if session.next_value.is_some() {
-            // match them up
-            let other_value = session.next_value.take().unwrap();
-            if value != other_value {
-                let mut history_text = String::new();
-                for e in session.history.iter() {
-                    write!(history_text, "{:?}\n", e.value).unwrap();
+        match &self.role {
+            Role::Primary(ref primary) => {
+                trace!("primary: waiting for value from secondary");
+                let msg = primary.rx.recv().unwrap();
+                match msg {
+                    MsgToPrimary::Value(secondary_value) => {
+                        trace!("primary: received value from secondary: {:?}", value);
+                        if !value.nearly_eq(&secondary_value) {
+                            let mut history_text = String::new();
+                            history_text.clear();
+                            /*
+                            for e in primary.history.iter() {
+                                write!(history_text, "{:?}\n", e.value).unwrap();
+                            }
+                            */
+                            error!(
+                                "DIVERGENCE DETECTED!\n{} : {:?}\n{}: {:?}\nHistory:\n{}",
+                                "PRIMARY", value, "SECONDARY", secondary_value, history_text
+                            );
+                            DebugBreak();
+                            panic!(
+                                "DIVERGENCE DETECTED!\n{} : {:?}\n{}: {:?}\nHistory:\n{}",
+                                "PRIMARY", value, "SECONDARY", secondary_value, history_text
+                            );
+                        }
+                        // message looks ok, release the secondary
+                        trace!("primary: looks good, sending Ack to secondary");
+                        {
+                            let mut session = primary.session.lock().unwrap();
+                            let seq_num = session.total_values;
+                            session.total_values += 1;
+                            debug!("primary: # {:4} good: {:?}", seq_num, value);
+                            if session.history.len() == session.max_history {
+                                session.history.pop_front();
+                            }
+                            session.history.push_back(HistoryEntry { value });
+                        }
+                        primary.tx.send(MsgToSecondary::Ack).unwrap();
+                    }
                 }
-                error!("DIVERGENCE DETECTED!\nREF : {:?}\nTEST: {:?}\nHistory:\n{}",
-                    if self.is_ref { &value } else { &other_value },
-                    if self.is_ref { &other_value } else { &value },
-                    history_text);
-                DebugBreak();
-                panic!("DIVERGENCE DETECTED!\nREF : {:?}\nTEST: {:?}\nHistory:\n{}",
-                    if self.is_ref { &value } else { &other_value },
-                    if self.is_ref { &other_value } else { &value },
-                    history_text);
             }
-            info!("{}: found existing matching value", self.name);
-            drop(other_value);
-            if session.history.len() == session.max_history {
-                drop(session.history.pop_front());
-            }
-            session.history.push_back(HistoryEntry {
-                value
-            });
-            session.total_values += 1;
-            self.session_ptr.1.notify_one();
-        } else {
-            // waiting for peer
-            debug!("{}: adding value", self.name);
-            session.next_value = Some(value);
-            // we contributed a value. unblock the peer, 
-            while g.next_value.is_some() {
-                debug!("{}: waiting for other impl to observe value", self.name);
-                g = self.session_ptr.1.wait(g).unwrap();
+            Role::Secondary(ref secondary) => {
+                trace!("secondary: sending value to primary: {:?}", value);
+                secondary.tx.send(MsgToPrimary::Value(value)).unwrap();
+                trace!("secnodary: waiting for Ack");
+                let _response = secondary.rx.recv().unwrap();
+                trace!("secondary: got Ack");
             }
         }
     }
@@ -122,57 +165,81 @@ impl Tracer {
     }
 }
 
-std::thread_local!{
-    static AMBIENT_TRACER: RefCell<Option<Tracer>> = RefCell::new(None);
+std::thread_local! {
+    static AMBIENT_TRACER: RefCell<Option<Arc<Tracer>>> = RefCell::new(None);
 }
 
-pub fn parallel_trace<R, T>(ref_impl: R, test_impl: T) 
-    where R: FnOnce(Tracer) + 'static + Send,
-    T: FnOnce(Tracer) + 'static + Send
+/// Returns (ref_output, test_output)
+pub fn parallel_trace<RefCode, TestCode, Output>(
+    ref_impl: RefCode,
+    test_impl: TestCode,
+) -> (Output, Output)
+where
+    RefCode: FnOnce(Arc<Tracer>) -> Output + 'static + Send,
+    TestCode: FnOnce(Arc<Tracer>) -> Output + 'static + Send,
+    Output: 'static + Send,
 {
-
-    fn call_impl<F: FnOnce(Tracer) + 'static + Send>(code_impl: F, tracer: Tracer) {
+    fn call_impl<F: FnOnce(Arc<Tracer>) -> Output + 'static + Send, Output: 'static + Send>(
+        code_impl: F,
+        tracer: Arc<Tracer>,
+    ) -> Output {
         let name = tracer.name;
         AMBIENT_TRACER.with(|t| *t.borrow_mut() = Some(tracer.clone()));
-        info!("{}: calling", name);
-        code_impl(tracer);
+        trace!("{}: calling", name);
+        let output = code_impl(tracer);
         AMBIENT_TRACER.with(|t| *t.borrow_mut() = None);
-        info!("{}: done", name);
+        trace!("{}: done", name);
+        output
     }
 
-    // ref runs on a separate thread
-    // test runs on this thread
+    let secondary_name = "REF";
+    let primary_name = "TEST";
 
-    let session_arc = Arc::new(
-        (Mutex::new(Session {
-            max_history: 50,
-            history: VecDeque::new(),
-            next_value: None,
-            total_values: 0       
-        }), Condvar::new()));
+    let (primary_tx, secondary_rx) = mpsc::sync_channel(0);
+    let (secondary_tx, primary_rx) = mpsc::sync_channel(0);
 
-    let ref_session_arc = session_arc.clone();
-    let test_session_arc = ref_session_arc.clone();
+    let primary_tracer = Tracer {
+        role: Role::Primary(PrimaryRole {
+            tx: primary_tx,
+            rx: primary_rx,
+            session: Mutex::new(Session {
+                max_history: 100,
+                history: VecDeque::new(),
+                total_values: 0,
+            }),
+        }),
+        name: primary_name,
+    };
 
-    let ref_thread = std::thread::spawn(move || {
-        info!("ref thread is starting");
-        let ref_tracer = Tracer { session_ptr: ref_session_arc, is_ref: true, name: "REF_",  };
-        call_impl(ref_impl, ref_tracer);
+    let secondary_tracer = Tracer {
+        role: Role::Secondary(SecondaryRole {
+            tx: secondary_tx,
+            rx: secondary_rx,
+        }),
+        name: secondary_name,
+    };
+
+    // secondary runs on a separate thread
+    // primary runs on this thread
+    let secondary_thread: JoinHandle<Output> = std::thread::spawn(move || -> Output {
+        debug!("secondary thread is starting");
+        let secondary_tracer_arc = Arc::new(secondary_tracer);
+        call_impl(ref_impl, secondary_tracer_arc)
     });
 
-    // Now run the test code
-    {
-        let test_tracer = Tracer { session_ptr: test_session_arc, is_ref: false, name: "TEST" };
-        call_impl(test_impl, test_tracer);
-    }
+    // Now run the primary code in this thread.
+    let test_output = call_impl(test_impl, Arc::new(primary_tracer));
 
-    info!("waiting for ref thread to finish...");
-    ref_thread.join().unwrap();
+    trace!("waiting for secondary thread to finish...");
+    let ref_output: Output = secondary_thread.join().unwrap();
 
-    {
-        let g = session_arc.0.lock().unwrap();
-        info!("tracing is complete.  total entries: {}", g.total_values);
-    }
+    /*{
+        let session = primary_tracer.session.lock().unwrap();
+        trace!("tracing is complete.  total entries: {}", session.total_values);
+    }*/
+    trace!("tracing is complete.");
+
+    (ref_output, test_output)
 }
 
 pub fn trace_value(value: TraceValue) {
@@ -200,43 +267,57 @@ mod kernel32 {
     }
 }
 fn DebugBreak() {
-    unsafe { kernel32::DebugBreak(); }
-}
-pub extern "C" fn trace_string_raw(s: *const u8, len: usize) {
     unsafe {
-        let bytes = core::slice::from_raw_parts::<u8>(s, len);
-        trace_string(core::str::from_utf8_unchecked(bytes).to_string())
+        kernel32::DebugBreak();
     }
 }
 
+#[no_mangle]
+pub extern "C" fn trace_str_raw(s: *const u8, len: usize) {
+    unsafe {
+        let bytes = core::slice::from_raw_parts::<'static, u8>(s, len);
+        trace_str(core::str::from_utf8_unchecked(bytes))
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn trace_string_copy_raw(s: *const u8, len: usize) {
+    unsafe {
+        let bytes = core::slice::from_raw_parts::<'_, u8>(s, len);
+        trace_string(core::str::from_utf8_unchecked(bytes).to_string())
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn trace_i32(i: i32) {
     trace_value(TraceValue::I32(i));
 }
 
+#[no_mangle]
+pub extern "C" fn trace_f32(f: f32) {
+    trace_value(TraceValue::F32(f))
+}
+
 #[cfg(test)]
 mod tests {
-use super::*;
+    use super::*;
 
-fn do_right_thing(t: Tracer) {
-    t.trace_i32(42);
-    t.trace_str("...");
-    t.trace_str("blah blah blah");
+    fn do_right_thing(t: Tracer) {
+        t.trace_i32(42);
+        t.trace_str("...");
+        t.trace_str("blah blah blah");
+    }
+
+    fn do_right_thing_ambient(t: Tracer) {
+        trace_i32(42);
+        trace_str("...");
+        trace_str("blah blah blah");
+    }
+
+    #[test]
+    fn test_tracer() {
+        env_logger::init();
+        parallel_trace(do_right_thing, do_right_thing_ambient);
+    }
+
 }
-
-fn do_right_thing_ambient(t: Tracer) {
-    trace_i32(42);
-    trace_str("...");
-    trace_str("blah blah blah");
-}
-
-#[test]
-fn test_tracer() {
-    env_logger::init();
-    parallel_trace(do_right_thing, do_right_thing_ambient);
-}
-
-
-}
-

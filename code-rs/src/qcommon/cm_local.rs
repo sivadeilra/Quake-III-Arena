@@ -279,9 +279,10 @@ pub static cm_playerCurveClip: cvar_t = cvar_t::new("cm_playerCurveClip");
 // cm_test.c
 
 // Used for oriented capsule collision detection
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy, Default)]
+#[repr(C)]
 pub struct sphere_t {
-    pub use_: bool,
+    pub use_: qboolean,
     pub radius: f32,
     pub halfheight: f32,
     pub offset: vec3_t,

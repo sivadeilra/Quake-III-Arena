@@ -21,12 +21,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
 use crate::game::surfaceflags::CONTENTS_BODY;
+use crate::port_trace::*;
 use crate::prelude::*;
 use crate::qcommon::cm_load::*;
 use crate::qcommon::cm_local::*;
 use crate::qcommon::cm_patch::*;
 use crate::qcommon::cm_test::CM_BoxLeafnums_r;
-use log::{debug, warn, trace};
+use log::{debug, trace, warn};
 
 // always use bbox vs. bbox collision and never capsule vs. bbox or vice versa
 //#define ALWAYS_BBOX_VS_BBOX
@@ -62,11 +63,7 @@ pub type mat3x3 = [vec3_t; 3];
 
 pub fn RotatePoint_mut(v: &mut vec3_t, matrix: &mat3x3) {
     // bk: FIXME
-    let result = vec3_t([
-        matrix[0].dot(*v),
-        matrix[1].dot(*v),
-        matrix[2].dot(*v),
-    ]);
+    let result = vec3_t([matrix[0].dot(*v), matrix[1].dot(*v), matrix[2].dot(*v)]);
     *v = result;
 }
 
@@ -152,7 +149,7 @@ fn CM_TestBoxInBrush(cm: &clipMap_t, tw: &mut traceWork_t, brush: &cbrush_t) {
         return;
     }
 
-    if tw.sphere.use_ {
+    if tw.sphere.use_.into() {
         // the first six planes are the axial planes, so we only
         // need to test the remainder
         let brush_sides = brush.sides(cm);
@@ -192,8 +189,8 @@ fn CM_TestBoxInBrush(cm: &clipMap_t, tw: &mut traceWork_t, brush: &cbrush_t) {
     }
 
     // inside this brush
-    tw.trace.startsolid = true;
-    tw.trace.allsolid = true;
+    tw.trace.startsolid = qtrue;
+    tw.trace.allsolid = qtrue;
     tw.trace.fraction = 0.0;
     tw.trace.contents = brush.contents;
 }
@@ -214,7 +211,7 @@ fn CM_TestInLeaf(cm: &clipMap_t, client: &mut ClipMapClient, tw: &mut traceWork_
 
         CM_TestBoxInBrush(cm, tw, b);
 
-        if tw.trace.allsolid {
+        if tw.trace.allsolid.into() {
             return;
         }
     }
@@ -238,8 +235,8 @@ fn CM_TestInLeaf(cm: &clipMap_t, client: &mut ClipMapClient, tw: &mut traceWork_
                 }
 
                 if CM_PositionTestInPatchCollide(tw, &patch.pc) {
-                    tw.trace.startsolid = true;
-                    tw.trace.allsolid = true;
+                    tw.trace.startsolid = qtrue;
+                    tw.trace.allsolid = qtrue;
                     tw.trace.fraction = 0.0;
                     tw.trace.contents = patch.contents;
                     return;
@@ -273,27 +270,27 @@ fn CM_TestCapsuleInCapsule(cm: &clipMap_t, tw: &mut traceWork_t, model: clipHand
     p1[2] += offs;
 
     if are_near(p1, top) {
-        tw.trace.startsolid = true;
-        tw.trace.allsolid = true;
+        tw.trace.startsolid = qtrue;
+        tw.trace.allsolid = qtrue;
         tw.trace.fraction = 0.0;
     }
 
     if are_near(p1, bottom) {
-        tw.trace.startsolid = true;
-        tw.trace.allsolid = true;
+        tw.trace.startsolid = qtrue;
+        tw.trace.allsolid = qtrue;
         tw.trace.fraction = 0.0;
     }
 
     let mut p2 = offset;
     p2[2] -= offs;
     if are_near(p2, top) {
-        tw.trace.startsolid = true;
-        tw.trace.allsolid = true;
+        tw.trace.startsolid = qtrue;
+        tw.trace.allsolid = qtrue;
         tw.trace.fraction = 0.0;
     }
     if are_near(p2, bottom) {
-        tw.trace.startsolid = true;
-        tw.trace.allsolid = true;
+        tw.trace.startsolid = qtrue;
+        tw.trace.allsolid = qtrue;
         tw.trace.fraction = 0.0;
     }
     // if between cylinder up and lower bounds
@@ -303,8 +300,8 @@ fn CM_TestCapsuleInCapsule(cm: &clipMap_t, tw: &mut traceWork_t, model: clipHand
         p1[2] = 0.0;
         // if the cylinders overlap
         if are_near(top, p1) {
-            tw.trace.startsolid = true;
-            tw.trace.allsolid = true;
+            tw.trace.startsolid = qtrue;
+            tw.trace.allsolid = qtrue;
             tw.trace.fraction = 0.0;
         }
     }
@@ -328,7 +325,7 @@ fn CM_TestBoundingBoxInCapsule(
     tw.end -= offset;
 
     // replace the bounding box with the capsule
-    tw.sphere.use_ = true;
+    tw.sphere.use_ = true.into();
     tw.sphere.radius = fmin(size1[0], size1[2]);
     tw.sphere.halfheight = size1[2];
     tw.sphere.offset = VectorSet(0.0, 0.0, size1[2] - tw.sphere.radius);
@@ -354,20 +351,15 @@ fn CM_PositionTest(cm: &clipMap_t, client: &mut ClipMapClient, tw: &mut traceWor
     };
     client.next_checkcount();
 
-    CM_BoxLeafnums_r(
-        cm,
-        bounds,
-        0,
-        &mut |leaf_num| {
-            // test the contents of the leafs
-            let leaf = &cm.leafs[leaf_num as usize];
-            CM_TestInLeaf(cm, client, tw, leaf);
-            if tw.trace.allsolid {
-                return Some(());
-            }
-            None
-        },
-    );
+    CM_BoxLeafnums_r(cm, bounds, 0, &mut |leaf_num| {
+        // test the contents of the leafs
+        let leaf = &cm.leafs[leaf_num as usize];
+        CM_TestInLeaf(cm, client, tw, leaf);
+        if tw.trace.allsolid.into() {
+            return Some(());
+        }
+        None
+    });
 }
 
 /*
@@ -408,7 +400,7 @@ fn CM_TraceThroughBrush(cm: &clipMap_t, tw: &mut traceWork_t, brush: &cbrush_t) 
 
     let mut leadside: Option<&cbrushside_t> = None;
 
-    if tw.sphere.use_ {
+    if tw.sphere.use_.into() {
         //
         // compare the trace against all planes of the brush
         // find the latest time the trace crosses a plane towards the interior
@@ -538,9 +530,9 @@ fn CM_TraceThroughBrush(cm: &clipMap_t, tw: &mut traceWork_t, brush: &cbrush_t) 
     //
     if !startout {
         // original point was inside brush
-        tw.trace.startsolid = true;
+        tw.trace.startsolid = qtrue;
         if !getout {
-            tw.trace.allsolid = true;
+            tw.trace.allsolid = qtrue;
             tw.trace.fraction = 0.0;
             tw.trace.contents = brush.contents;
         }
@@ -631,11 +623,11 @@ fn CM_TraceThroughSphere(
     let l1 = dir.length2();
     if l1 < Square(radius) {
         tw.trace.fraction = 0.0;
-        tw.trace.startsolid = true;
+        tw.trace.startsolid = qtrue;
         // test for allsolid
         let dir = end - origin;
         if dir.length2() < Square(radius) {
-            tw.trace.allsolid = true;
+            tw.trace.allsolid = qtrue;
         }
         return;
     }
@@ -710,9 +702,9 @@ fn CM_TraceThroughVerticalCylinder(
         // if inside the cylinder
         if (start2d - org2d).length2() < Square(radius) {
             tw.trace.fraction = 0.0;
-            tw.trace.startsolid = true;
+            tw.trace.startsolid = qtrue;
             if (end2d - org2d).length2() < Square(radius) {
-                tw.trace.allsolid = true;
+                tw.trace.allsolid = qtrue;
             }
             return;
         }
@@ -856,7 +848,7 @@ fn CM_TraceBoundingBoxThroughCapsule(
     tw.end -= offset;
 
     // replace the bounding box with the capsule
-    tw.sphere.use_ = true;
+    tw.sphere.use_ = true.into();
     tw.sphere.radius = fmin(size1[0], size1[2]);
     tw.sphere.halfheight = size1[2];
     tw.sphere.offset = VectorSet(0.0, 0.0, size1[2] - tw.sphere.radius);
@@ -993,57 +985,146 @@ fn CM_TraceThroughTree(
 use core::fmt::Debug;
 
 fn dbg_check<T: PartialEq + Debug>(name: &str, actual: T, expected: T) {
-    debug!("check: {:10} : {:?} vs {:?} - {:?}", name, expected, actual, expected == actual);
+    debug!(
+        "check: {:10} : {:?} vs {:?} - {:?}",
+        name,
+        expected,
+        actual,
+        expected == actual
+    );
 }
 
+extern "C" {
+    fn real_CM_Trace(
+        result: &mut trace_t,
+        start: &vec3_t,
+        end: &vec3_t,
+        mins: Option<&vec3_t>,
+        maxs: Option<&vec3_t>,
+        model: i32,
+        origin: &vec3_t,
+        brushmask: i32,
+        capsule: i32,
+        sphere: Option<&sphere_t>,
+    );
+}
+
+fn vec3_t_deref_or_origin(v_opt: Option<&vec3_t>) -> vec3_t {
+    match v_opt {
+        Some(v) => *v,
+        None => vec3_t::ORIGIN,
+    }
+}
+
+fn deref_or_default<T: Copy + Default>(opt: Option<&T>) -> T {
+    match opt {
+        Some(v) => *v,
+        None => T::default(),
+    }
+}
+
+// called by C code
 #[no_mangle]
-unsafe extern "C" fn rust_CM_Trace(
-    result: *mut trace_t,
+extern "C" fn rust_tracing_CM_Trace(
+    result: &mut trace_t,
     start: &vec3_t,
     end: &vec3_t,
-    mins: Option<&vec3_t>,
-    maxs: Option<&vec3_t>,
+    mins_opt: Option<&vec3_t>,
+    maxs_opt: Option<&vec3_t>,
     model: i32,
-    origin: &vec3_t,
+    origin_ref: &vec3_t,
     brushmask: i32,
-    capsule:  i32,
-    sphere: *const (),
-    expected_result: &trace_t_interop,
-    expected_result_size: usize
+    capsule: i32,
+    sphere_opt: Option<&sphere_t>,
 ) {
-    loop {
-    assert_eq!(expected_result_size, core::mem::size_of::<trace_t_interop>());
-let expected_result: trace_t = expected_result.clone().into();
+    let start: vec3_t = *start;
+    let end: vec3_t = *end;
+    let mins: vec3_t = deref_or_default(mins_opt);
+    let maxs: vec3_t = deref_or_default(maxs_opt);
+    let origin: vec3_t = *origin_ref;
+    let sphere: Option<sphere_t> = sphere_opt.map(|v| *v);
+
+    let (ref_output, test_output) = crate::port_trace::parallel_trace(
+        move |_tracer| -> trace_t {
+            let mut ref_result = trace_t::default();
+            unsafe {
+                real_CM_Trace(
+                    &mut ref_result,
+                    &start,
+                    &end,
+                    Some(&mins),
+                    Some(&maxs),
+                    model,
+                    &origin,
+                    brushmask,
+                    capsule,
+                    sphere.as_ref(),
+                );
+            }
+            ref_result
+        },
+        move |_tracer| -> trace_t {
+            rust_CM_Trace(
+                start,
+                end,
+                mins,
+                maxs,
+                model,
+                origin,
+                brushmask,
+                capsule,
+                sphere.as_ref(),
+            )
+        },
+    );
+
+    if ref_output == test_output {
+        trace!("traces match");
+    } else {
+        debug!(
+            "rust_CM_Trace: model={} start={:?} end={:?}",
+            model, start, end
+        );
+        debug!("traces do not match");
+        debug!("ref output  : {:#?}", ref_output);
+        debug!("test output : {:#?}", test_output);
+        // dbg_check("allsolid", rust_result.allsolid, expected_result.allsolid);
+        // continue;
+    }
+
+    *result = ref_output.into();
+}
+
+// the Rust implementation of CM_Trace
+fn rust_CM_Trace(
+    start: vec3_t,
+    end: vec3_t,
+    mins: vec3_t,
+    maxs: vec3_t,
+    model: i32,
+    origin: vec3_t,
+    brushmask: i32,
+    capsule: i32,
+    sphere: Option<&sphere_t>,
+) -> trace_t {
     let mut g = cm();
     if let Some(ref mut cm) = *g {
         let mut client = ClipMapClient::new(&cm);
-        let rust_result = CM_Trace(cm, &mut client, 
-            *start,
-            *end,
-            mins.map(|v| *v),
-            maxs.map(|v| *v),
+        CM_Trace(
+            cm,
+            &mut client,
+            start,
+            end,
+            Some(mins),
+            Some(maxs),
             model,
-            *origin,
+            origin,
             brushmask,
             capsule,
-            None /*sphere*/);
-
-        if expected_result == rust_result {
-            trace!("traces match");
-        } else {
-            debug!("rust_CM_Trace: model={} start={:?} end={:?}",  model, start, end);
-            debug!("traces do not match");
-            debug!("expected: {:#?}", expected_result);
-            debug!("actual  : {:#?}", rust_result);
-            dbg_check("allsolid", rust_result.allsolid, expected_result.allsolid);
-            // continue;
-        }
-
-        core::ptr::write(result, rust_result);
+            sphere,
+        )
     } else {
-        warn!("global clip map is not set");
-    }
-        break;
+        panic!("global clip map is not set");
     }
 }
 
@@ -1091,7 +1172,7 @@ fn CM_Trace(
     } else {
         let radius = fmin(tw_size[1][0], tw_size[1][2]);
         sphere_t {
-            use_: capsule != 0,
+            use_: (capsule != 0).into(),
             radius: radius,
             halfheight: tw_size[1][2],
             offset: VectorSet(0.0, 0.0, tw_size[1][2] - radius),
@@ -1102,7 +1183,7 @@ fn CM_Trace(
     let tw_end = end + offset;
 
     // calculate bounds
-    let tw_bounds = if tw_sphere.use_ {
+    let tw_bounds = if tw_sphere.use_.into() {
         [
             vec3_t::min(tw_start, tw_end) - tw_sphere.offset.map(|c| c.abs() - tw_sphere.radius),
             vec3_t::max(tw_start, tw_end) + tw_sphere.offset.map(|c| c.abs() + tw_sphere.radius),
@@ -1152,11 +1233,15 @@ fn CM_Trace(
         extents: Default::default(),
     };
 
+    trace_str("CM_Trace start");
+
     //
     // check for position test special case
     //
-	if start == end {
+    if start == end {
+        trace_str("start == end");
         if model != 0 {
+            trace_str("model != 0");
             /*
             #ifdef ALWAYS_BBOX_VS_BBOX // bk010201 - FIXME - compile time flag?
                         if ( model == BOX_MODEL_HANDLE || model == CAPSULE_MODEL_HANDLE) {
@@ -1172,15 +1257,20 @@ fn CM_Trace(
             #endif
             */
             if model == CAPSULE_MODEL_HANDLE {
-                if tw.sphere.use_ {
+                trace_str("model == CAPSULE_MODEL_HANDLE");
+                if tw.sphere.use_.into() {
+                    trace_str("tw.sphere.use, CM_TestCapsuleInCapsule");
                     CM_TestCapsuleInCapsule(cm, &mut tw, model);
                 } else {
+                    trace_str("CM_TestBoundingBoxInCapsule");
                     CM_TestBoundingBoxInCapsule(cm, client, &mut tw, model);
                 }
             } else {
+                trace_str("CM_TestInLeaf");
                 CM_TestInLeaf(cm, client, &mut tw, &cmod_leaf);
             }
         } else {
+            trace_str("CM_PositionTest");
             CM_PositionTest(cm, client, &mut tw);
         }
     } else {
@@ -1188,9 +1278,11 @@ fn CM_Trace(
         // check for point special case
         //
         if tw.size[0][0] == 0.0 && tw.size[0][1] == 0.0 && tw.size[0][2] == 0.0 {
+            trace_str("isPoint = true");
             tw.isPoint = true;
             tw.extents = vec3_t::ORIGIN;
         } else {
+            trace_str("isPoint = false");
             tw.isPoint = false;
             tw.extents = tw.size[1];
         }
@@ -1199,6 +1291,7 @@ fn CM_Trace(
         // general sweeping through world
         //
         if model != 0 {
+            trace_str("model != 0");
             /*
             #ifdef ALWAYS_BBOX_VS_BBOX
                         if ( model == BOX_MODEL_HANDLE || model == CAPSULE_MODEL_HANDLE) {
@@ -1214,17 +1307,22 @@ fn CM_Trace(
             #endif
             */
             if model == CAPSULE_MODEL_HANDLE {
-                if tw.sphere.use_ {
+                trace_str("model == CAPSULE_MODEL_HANDLE");
+                if tw.sphere.use_.into() {
+                    trace_str("tw.sphere.use, CM_TraceCapsuleThroughCapsule");
                     CM_TraceCapsuleThroughCapsule(cm, &mut tw, model);
                 } else {
+                    trace_str("CM_TraceBoundingBoxThroughCapsule");
                     CM_TraceBoundingBoxThroughCapsule(cm, client, &mut tw, model);
                 }
             } else {
+                trace_str("CM_TraceThroughLeaf");
                 CM_TraceThroughLeaf(cm, client, &mut tw, &cmod_leaf);
             }
         } else {
             let tw_start = tw.start;
             let tw_end = tw.end;
+            trace_str("CM_TraceThroughTree");
             CM_TraceThroughTree(cm, client, &mut tw, 0, 0.0, 1.0, tw_start, tw_end);
         }
     }
@@ -1240,9 +1338,25 @@ fn CM_Trace(
     // If fraction == 1.0, we never hit anything, and thus the plane is not valid.
     // Otherwise, the normal on the plane should have unit length
     assert!(
-        tw.trace.allsolid || tw.trace.fraction == 1.0 || (tw.trace.plane.normal).length2() > 0.9999
+        tw.trace.allsolid.into()
+            || tw.trace.fraction == 1.0
+            || (tw.trace.plane.normal).length2() > 0.9999
     );
-	//debug!("trace done: {:?}", tw.trace);
+    trace_str("CM_Trace results");
+    trace_str("allsolid");
+    trace_i32(tw.trace.allsolid.0);
+    trace_str("startsolid");
+    trace_i32(tw.trace.startsolid.0);
+    trace_str("fraction");
+    trace_f32(tw.trace.fraction);
+    // missing
+    trace_str("surfaceFlags");
+    trace_i32(tw.trace.surfaceFlags);
+    trace_str("contents");
+    trace_i32(tw.trace.contents);
+    trace_str("entityNum");
+    trace_i32(tw.trace.entityNum);
+
     return tw.trace;
 }
 
@@ -1334,7 +1448,7 @@ pub fn CM_TransformedBoxTrace(
     }
 
     let sphere = sphere_t {
-        use_: capsule != 0,
+        use_: (capsule != 0).into(),
         radius: sphere_radius,
         halfheight: halfheight,
         offset: sphere_offset,
