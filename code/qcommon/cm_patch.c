@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "cm_local.h"
 #include "cm_patch.h"
+#include "port_tracer.h"
 
 /*
 
@@ -1134,6 +1135,17 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
 	Com_Memcpy( pf->planes, planes, numPlanes * sizeof( *pf->planes ) );
 }
 
+void trace_grid(const cGrid_t* grid) {
+    trace_str("grid");
+    trace_i32(grid->wrapWidth);
+    trace_i32(grid->wrapHeight);
+    for (int i = 0; i < grid->width; ++i) {
+        for (int j = 0; j < grid->height; ++j) {
+            trace_vec3(grid->points[i][j]);
+        }
+    }
+    trace_str(".");
+}
 
 /*
 ===================
@@ -1173,17 +1185,25 @@ struct patchCollide_s	*CM_GeneratePatchCollide( int width, int height, vec3_t *p
 			VectorCopy( points[j*width + i], grid.points[i][j] );
 		}
 	}
+    trace_grid(&grid);
 
 	// subdivide the grid
 	CM_SetGridWrapWidth( &grid );
-	CM_SubdivideGridColumns( &grid );
-	CM_RemoveDegenerateColumns( &grid );
+    trace_grid(&grid);
+    CM_SubdivideGridColumns( &grid );
+    trace_grid(&grid);
+    CM_RemoveDegenerateColumns( &grid );
+    trace_grid(&grid);
 
 	CM_TransposeGrid( &grid );
+    trace_grid(&grid);
 
 	CM_SetGridWrapWidth( &grid );
-	CM_SubdivideGridColumns( &grid );
-	CM_RemoveDegenerateColumns( &grid );
+    trace_grid(&grid);
+    CM_SubdivideGridColumns( &grid );
+    trace_grid(&grid);
+    CM_RemoveDegenerateColumns( &grid );
+    trace_grid(&grid);
 
 	// we now have a grid of points exactly on the curve
 	// the aproximate surface defined by these points will be

@@ -24,9 +24,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 use crate::is_close_to;
 use crate::prelude::*;
+use crate::qcommon::cm_load::Error;
 use crate::qcommon::cm_local::*;
 use crate::qcommon::cm_polylib::*;
 use crate::qcommon::cm_trace::traceWork_t;
+use crate::port_trace::*;
 use log::warn;
 use std::mem::swap;
 
@@ -350,7 +352,7 @@ fn compute_grid_wrap_width(grid: &cGrid_t) -> bool {
     for i in 0..height {
         let d_v = points[0][i] - points[width - 1][i];
         for j in 0..3 {
-            let d = d_v[j] - d_v[j];
+            let d = d_v[j];
             if d < -WRAP_POINT_EPSILON || d > WRAP_POINT_EPSILON {
                 return false;
             }
@@ -459,8 +461,8 @@ fn CM_RemoveDegenerateColumns(grid: &mut cGrid_t) {
     let mut i: usize = 0;
     while i < grid.width - 1 {
         let any_degenerate =
-            (0..grid.height).any(|j| CM_ComparePoints(grid.points[i][j], grid.points[i + 1][j]));
-        if !any_degenerate {
+            (0..grid.height).any(|j| !CM_ComparePoints(grid.points[i][j], grid.points[i + 1][j]));
+        if any_degenerate {
             i += 1;
             continue;
         }
@@ -598,8 +600,10 @@ fn CM_FindPlane(
     p1: vec3_t,
     p2: vec3_t,
     p3: vec3_t,
-) -> Option<usize> {
-    let new_plane = CM_PlaneFromPoints(p1, p2, p3)?;
+) -> Result<i32, Error> {
+    let new_plane = if let Some(new_plane) = CM_PlaneFromPoints(p1, p2, p3) { new_plane } else {
+        return Ok(-1);
+    };
 
     // see if the points are close enough to an existing plane
     for (i, p) in planes.iter().enumerate() {
@@ -611,33 +615,26 @@ fn CM_FindPlane(
             move |pN: vec3_t| is_close_to(pN.dot(p.normal), p.dist, PLANE_TRI_EPSILON);
 
         if point_is_good(p1) && point_is_good(p2) && point_is_good(p3) {
-            return Some(i);
+            return Ok(i as i32);
         }
     }
 
     // add a new plane
     let index = planes.len();
     add_plane(planes, new_plane);
-    Some(index)
+    Ok(index as i32)
 }
 
-/*
-==================
-CM_PointOnPlaneSide
-==================
-*/
-fn CM_PointOnPlaneSide(planes: &[patchPlane_t], p: vec3_t, planeNum: usize) -> Side {
-    /*
-        if ( planeNum == -1 ) {
-            return SIDE_ON;
-        }
-    */
+fn CM_PointOnPlaneSide(planes: &[patchPlane_t], p: vec3_t, planeNum: i32) -> Side {
+    if planeNum == -1 {
+        return SIDE_ON;
+    }
 
-    let plane = planes[planeNum].plane;
+    let plane = planes[planeNum as usize].plane;
     let d = plane.project_near(p);
 
     if d > PLANE_TRI_EPSILON {
-        return SIDE_FRONT;
+        SIDE_FRONT
     } else if d < -PLANE_TRI_EPSILON {
         SIDE_BACK
     } else {
@@ -650,26 +647,21 @@ fn CM_PointOnPlaneSide(planes: &[patchPlane_t], p: vec3_t, planeNum: usize) -> S
 CM_GridPlane
 ==================
 */
-fn CM_GridPlane(gridPlanes: &GridPlanes, i: usize, j: usize, tri: usize) -> Option<usize> {
+fn CM_GridPlane(gridPlanes: &GridPlanes, i: usize, j: usize, tri: usize) -> Result<usize, Error> {
     let p = gridPlanes[i][j][tri];
     if p != -1 {
-        return Some(p as usize);
+        return Ok(p as usize);
     }
     let p = gridPlanes[i][j][tri ^ 1];
     if p != -1 {
-        return Some(p as usize);
+        return Ok(p as usize);
     }
 
     // should never happen
-    warn!("WARNING: CM_GridPlane unresolvable\n");
-    None
+    warn!("WARNING: CM_GridPlane unresolvable");
+    Err(Error::Str("CM_GridPlane unresolvable"))
 }
 
-/*
-==================
-CM_EdgePlaneNum
-==================
-*/
 fn CM_EdgePlaneNum(
     planes: &mut Vec<patchPlane_t>,
     grid: &cGrid_t,
@@ -677,7 +669,7 @@ fn CM_EdgePlaneNum(
     i: usize,
     j: usize,
     k: usize,
-) -> Option<usize> {
+) -> Result<i32, Error> {
     let up;
     let p;
     let p1;
@@ -690,7 +682,7 @@ fn CM_EdgePlaneNum(
             p2 = grid.points[i + 1][j];
             p = CM_GridPlane(gridPlanes, i, j, 0)?;
             up = VectorMA(p1, 4.0, planes[p].plane.normal);
-            return CM_FindPlane(planes, p1, p2, up);
+            CM_FindPlane(planes, p1, p2, up)
         }
 
         2 => {
@@ -699,7 +691,7 @@ fn CM_EdgePlaneNum(
             p2 = grid.points[i + 1][j + 1];
             p = CM_GridPlane(gridPlanes, i, j, 1)?;
             up = VectorMA(p1, 4.0, planes[p].plane.normal);
-            return CM_FindPlane(planes, p2, p1, up);
+            CM_FindPlane(planes, p2, p1, up)
         }
 
         3 => {
@@ -708,7 +700,7 @@ fn CM_EdgePlaneNum(
             p2 = grid.points[i][j + 1];
             p = CM_GridPlane(gridPlanes, i, j, 1)?;
             up = VectorMA(p1, 4.0, planes[p].plane.normal);
-            return CM_FindPlane(planes, p2, p1, up);
+            CM_FindPlane(planes, p2, p1, up)
         }
 
         1 => {
@@ -717,7 +709,7 @@ fn CM_EdgePlaneNum(
             p2 = grid.points[i + 1][j + 1];
             p = CM_GridPlane(gridPlanes, i, j, 0)?;
             up = VectorMA(p1, 4.0, planes[p].plane.normal);
-            return CM_FindPlane(planes, p1, p2, up);
+            CM_FindPlane(planes, p1, p2, up)
         }
 
         4 => {
@@ -726,7 +718,7 @@ fn CM_EdgePlaneNum(
             p2 = grid.points[i][j];
             p = CM_GridPlane(gridPlanes, i, j, 0)?;
             up = VectorMA(p1, 4.0, planes[p].plane.normal);
-            return CM_FindPlane(planes, p1, p2, up);
+            CM_FindPlane(planes, p1, p2, up)
         }
 
         5 => {
@@ -735,10 +727,11 @@ fn CM_EdgePlaneNum(
             p2 = grid.points[i + 1][j + 1];
             p = CM_GridPlane(gridPlanes, i, j, 1)?;
             up = VectorMA(p1, 4.0, planes[p].plane.normal);
-            return CM_FindPlane(planes, p1, p2, up);
+            CM_FindPlane(planes, p1, p2, up)
         }
         _ => panic!("CM_EdgePlaneNum: bad k"),
     }
+    // plane_num can be -1, and that's OK, and is different from an error.
 }
 
 fn CM_SetBorderInward(
@@ -787,7 +780,7 @@ fn CM_SetBorderInward(
         let mut front = 0;
         let mut back = 0;
         for &p in points[..numPoints].iter() {
-            match CM_PointOnPlaneSide(planes, p, facet.borderPlanes[k] as usize) {
+            match CM_PointOnPlaneSide(planes, p, facet.borderPlanes[k]) {
                 SIDE_FRONT => front += 1,
                 SIDE_BACK => back += 1,
                 _ => {}
@@ -1035,12 +1028,7 @@ pub const EN_RIGHT: edgeName_t = 1;
 pub const EN_BOTTOM: edgeName_t = 2;
 pub const EN_LEFT: edgeName_t = 3;
 
-/*
-==================
-CM_PatchCollideFromGrid
-==================
-*/
-fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> patchCollide_t {
+fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> Result<patchCollide_t, Error> {
     let mut gridPlanes: GridPlanes = [[[0; 2]; MAX_GRID_SIZE]; MAX_GRID_SIZE];
     let mut facets: Vec<facet_t> = Vec::new();
     let mut planes: Vec<patchPlane_t> = Vec::new();
@@ -1051,12 +1039,12 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> patchCollide_t {
             let p1 = grid.points[i][j];
             let p2 = grid.points[i + 1][j];
             let p3 = grid.points[i + 1][j + 1];
-            gridPlanes[i][j][0] = CM_FindPlane(&mut planes, p1, p2, p3).unwrap() as i32;
+            gridPlanes[i][j][0] = CM_FindPlane(&mut planes, p1, p2, p3)?;
 
             let p1 = grid.points[i + 1][j + 1];
             let p2 = grid.points[i][j + 1];
             let p3 = grid.points[i][j];
-            gridPlanes[i][j][1] = CM_FindPlane(&mut planes, p1, p2, p3).unwrap() as i32;
+            gridPlanes[i][j][1] = CM_FindPlane(&mut planes, p1, p2, p3)?;
         }
     }
 
@@ -1075,7 +1063,7 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> patchCollide_t {
             noAdjust[EN_TOP] = borders[EN_TOP] == gridPlanes[i][j][0];
             if borders[EN_TOP] == -1 || noAdjust[EN_TOP] {
                 borders[EN_TOP] =
-                    CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 0).unwrap() as i32;
+                    CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 0)?;
             }
 
             borders[EN_BOTTOM] = -1;
@@ -1087,7 +1075,7 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> patchCollide_t {
             noAdjust[EN_BOTTOM] = borders[EN_BOTTOM] == gridPlanes[i][j][1];
             if borders[EN_BOTTOM] == -1 || noAdjust[EN_BOTTOM] {
                 borders[EN_BOTTOM] =
-                    CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 2).unwrap() as i32;
+                    CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 2)?;
             }
 
             borders[EN_LEFT] = -1;
@@ -1099,7 +1087,7 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> patchCollide_t {
             noAdjust[EN_LEFT] = borders[EN_LEFT] == gridPlanes[i][j][1];
             if borders[EN_LEFT] == -1 || noAdjust[EN_LEFT] {
                 borders[EN_LEFT] =
-                    CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 3).unwrap() as i32;
+                    CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 3)?;
             }
 
             borders[EN_RIGHT] = -1;
@@ -1111,7 +1099,7 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> patchCollide_t {
             noAdjust[EN_RIGHT] = borders[EN_RIGHT] == gridPlanes[i][j][0];
             if borders[EN_RIGHT] == -1 || noAdjust[EN_RIGHT] {
                 borders[EN_RIGHT] =
-                    CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 1).unwrap() as i32;
+                    CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 1)?;
             }
 
             if gridPlanes[i][j][0] == gridPlanes[i][j][1] {
@@ -1149,8 +1137,7 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> patchCollide_t {
                         facet.borderPlanes[2] = borders[EN_BOTTOM];
                         if facet.borderPlanes[2] == -1 {
                             facet.borderPlanes[2] =
-                                CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 4).unwrap()
-                                    as i32;
+                                CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 4)?;
                         }
                     }
                     CM_SetBorderInward(&planes, &mut facet, grid, &gridPlanes, i, j, 0);
@@ -1174,8 +1161,7 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> patchCollide_t {
                         facet.borderPlanes[2] = borders[EN_TOP];
                         if facet.borderPlanes[2] == -1 {
                             facet.borderPlanes[2] =
-                                CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 5).unwrap()
-                                    as i32;
+                                CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 5)?;
                         }
                     }
                     CM_SetBorderInward(&planes, &mut facet, grid, &gridPlanes, i, j, 1);
@@ -1189,13 +1175,24 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> patchCollide_t {
     }
 
     // copy the results out
-    patchCollide_t {
+    Ok(patchCollide_t {
         facets,
         planes,
         bounds: ClearBounds(),
-    }
+    })
 }
 
+fn trace_grid(grid: &cGrid_t) {
+    trace_str("grid");
+    trace_i32(grid.wrapWidth as i32);
+    trace_i32(grid.wrapHeight as i32);
+    for i in 0..grid.width {
+        for j in 0..grid.height {
+            trace_vec3(grid.points[i][j]);
+        }
+    }
+    trace_str(".");
+}
 /*
 ===================
 CM_GeneratePatchCollide
@@ -1206,7 +1203,7 @@ collision detection with a patch mesh.
 Points is packed as concatenated rows.
 ===================
 */
-pub fn CM_GeneratePatchCollide(width: usize, height: usize, points: &[vec3_t]) -> patchCollide_t {
+pub fn CM_GeneratePatchCollide(width: usize, height: usize, points: &[vec3_t]) -> Result<patchCollide_t, Error> {
     assert!(width > 2);
     assert!(height > 2);
     assert!(!points.is_empty());
@@ -1230,16 +1227,25 @@ pub fn CM_GeneratePatchCollide(width: usize, height: usize, points: &[vec3_t]) -
         }
     }
 
+    trace_grid(&grid);
+
     // subdivide the grid
     CM_SetGridWrapWidth(&mut grid);
+    trace_grid(&grid);
     CM_SubdivideGridColumns(&mut grid);
+    trace_grid(&grid);
     CM_RemoveDegenerateColumns(&mut grid);
+    trace_grid(&grid);
 
     CM_TransposeGrid(&mut grid);
+    trace_grid(&grid);
 
     CM_SetGridWrapWidth(&mut grid);
+    trace_grid(&grid);
     CM_SubdivideGridColumns(&mut grid);
+    trace_grid(&grid);
     CM_RemoveDegenerateColumns(&mut grid);
+    trace_grid(&grid);
 
     // we now have a grid of points exactly on the curve
     // the aproximate surface defined by these points will be
@@ -1254,7 +1260,7 @@ pub fn CM_GeneratePatchCollide(width: usize, height: usize, points: &[vec3_t]) -
     c_totalPatchBlocks.add_usize((grid.width - 1) * (grid.height - 1));
 
     // generate a bsp tree for the surface
-    let mut pf = CM_PatchCollideFromGrid(&grid);
+    let mut pf = CM_PatchCollideFromGrid(&grid)?;
 
     // expand by one unit for epsilon purposes
     bounds.mins[0] -= 1.0;
@@ -1266,7 +1272,7 @@ pub fn CM_GeneratePatchCollide(width: usize, height: usize, points: &[vec3_t]) -
     bounds.maxs[2] += 1.0;
 
     pf.bounds = bounds;
-    pf
+    Ok(pf)
 }
 
 /*

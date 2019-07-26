@@ -30,3 +30,10 @@ inline void trace_string_f(const char* fmt, ...) {
     trace_string(buffer);
     va_end(va);
 }
+
+inline void trace_vec3(const float v[3]) {
+    trace_f32(v[0]);
+    trace_f32(v[1]);
+    trace_f32(v[2]);
+}
+

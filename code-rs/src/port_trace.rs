@@ -109,16 +109,14 @@ impl Tracer {
                     MsgToPrimary::Value(secondary_value) => {
                         trace!("primary: received value from secondary: {:?}", value);
                         if !value.nearly_eq(&secondary_value) {
+                            let session = primary.session.lock().unwrap();
                             let mut history_text = String::new();
-                            history_text.clear();
-                            /*
-                            for e in primary.history.iter() {
+                            for e in session.history.iter() {
                                 write!(history_text, "{:?}\n", e.value).unwrap();
                             }
-                            */
                             error!(
-                                "DIVERGENCE DETECTED!\n{} : {:?}\n{}: {:?}\nHistory:\n{}",
-                                "PRIMARY", value, "SECONDARY", secondary_value, history_text
+                                "DIVERGENCE DETECTED!  History:\n{}\nPRIMARY: {:?}\nSECONDARY: {:?}\n",
+                                history_text, value, secondary_value
                             );
                             DebugBreak();
                             panic!(
@@ -132,7 +130,7 @@ impl Tracer {
                             let mut session = primary.session.lock().unwrap();
                             let seq_num = session.total_values;
                             session.total_values += 1;
-                            debug!("primary: # {:4} good: {:?}", seq_num, value);
+                            trace!("primary: # {:4} good: {:?}", seq_num, value);
                             if session.history.len() == session.max_history {
                                 session.history.pop_front();
                             }
@@ -169,17 +167,40 @@ std::thread_local! {
     static AMBIENT_TRACER: RefCell<Option<Arc<Tracer>>> = RefCell::new(None);
 }
 
+/// This runs two closures in parallel, one in the current thread and one in
+/// a worker thread. Because this code always calls join on the second thread,
+/// we can safely use spawn_unchecked(). This allows the closures to contain
+/// references to items on the stack.
+fn run_two_threads<A, B, OutputA, OutputB>(a: A, b: B) -> (OutputA, OutputB) 
+    where A: FnOnce() -> OutputA + Send,
+    B: FnOnce() -> OutputB + Send,
+    OutputA: Send,
+    OutputB: Send
+{
+    let builder = std::thread::Builder::new();
+    let joiner = unsafe { builder.spawn_unchecked(move || {
+        trace!("secondary thread is starting");
+        let output = b();
+        trace!("secondary thread is done");
+        output
+        }) }.unwrap();
+    let output_a = a();
+    trace!("waiting for secondary thread to finish...");
+    let output_b = joiner.join().unwrap();
+    (output_a, output_b)
+}
+
 /// Returns (ref_output, test_output)
 pub fn parallel_trace<RefCode, TestCode, Output>(
     ref_impl: RefCode,
     test_impl: TestCode,
 ) -> (Output, Output)
 where
-    RefCode: FnOnce(Arc<Tracer>) -> Output + 'static + Send,
-    TestCode: FnOnce(Arc<Tracer>) -> Output + 'static + Send,
-    Output: 'static + Send,
+    RefCode: FnOnce(Arc<Tracer>) -> Output + Send,
+    TestCode: FnOnce(Arc<Tracer>) -> Output + Send,
+    Output: Send,
 {
-    fn call_impl<F: FnOnce(Arc<Tracer>) -> Output + 'static + Send, Output: 'static + Send>(
+    fn call_impl<F: FnOnce(Arc<Tracer>) -> Output + Send, Output: Send>(
         code_impl: F,
         tracer: Arc<Tracer>,
     ) -> Output {
@@ -221,35 +242,27 @@ where
 
     // secondary runs on a separate thread
     // primary runs on this thread
-    let secondary_thread: JoinHandle<Output> = std::thread::spawn(move || -> Output {
-        debug!("secondary thread is starting");
-        let secondary_tracer_arc = Arc::new(secondary_tracer);
-        call_impl(ref_impl, secondary_tracer_arc)
+
+    let outputs = run_two_threads(move || {
+        call_impl(test_impl, Arc::new(primary_tracer))
+    },
+    move || {
+        call_impl(ref_impl, Arc::new(secondary_tracer))
     });
-
-    // Now run the primary code in this thread.
-    let test_output = call_impl(test_impl, Arc::new(primary_tracer));
-
-    trace!("waiting for secondary thread to finish...");
-    let ref_output: Output = secondary_thread.join().unwrap();
-
-    /*{
-        let session = primary_tracer.session.lock().unwrap();
-        trace!("tracing is complete.  total entries: {}", session.total_values);
-    }*/
     trace!("tracing is complete.");
-
-    (ref_output, test_output)
+    outputs
 }
 
 pub fn trace_value(value: TraceValue) {
+    let mut local_tracer: Option<Arc<Tracer>> = None;
     AMBIENT_TRACER.with(|t| {
-        if let Some(tracer) = t.borrow().as_ref() {
-            tracer.trace_value(value);
-        } else {
-            // ignore the call, we're not in a trace context
-        }
+        local_tracer = t.borrow().clone();
     });
+    if let Some(tracer) = local_tracer.as_ref() {
+        tracer.trace_value(value);
+    } else {
+        // ignore the call, we're not in a trace context
+    }
 }
 
 pub fn trace_str(s: &'static str) {
@@ -302,13 +315,13 @@ pub extern "C" fn trace_f32(f: f32) {
 mod tests {
     use super::*;
 
-    fn do_right_thing(t: Tracer) {
+    fn do_right_thing(t: Arc<Tracer>) {
         t.trace_i32(42);
         t.trace_str("...");
         t.trace_str("blah blah blah");
     }
 
-    fn do_right_thing_ambient(t: Tracer) {
+    fn do_right_thing_ambient(t: Arc<Tracer>) {
         trace_i32(42);
         trace_str("...");
         trace_str("blah blah blah");
@@ -321,3 +334,11 @@ mod tests {
     }
 
 }
+
+// find a better home for this
+pub fn trace_vec3(v: crate::vec3::vec3_t) {
+    trace_f32(v[0]);
+    trace_f32(v[1]);
+    trace_f32(v[2]);
+}
+

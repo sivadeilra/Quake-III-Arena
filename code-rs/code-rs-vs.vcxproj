@@ -63,9 +63,9 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <NMakeBuildCommandLine>cargo +stable-i686-pc-windows-msvc build --target i686-pc-windows-msvc</NMakeBuildCommandLine>
+    <NMakeBuildCommandLine>cargo +nightly-i686-pc-windows-msvc build --target i686-pc-windows-msvc</NMakeBuildCommandLine>
     <NMakeOutput>code.lib</NMakeOutput>
-    <NMakeCleanCommandLine>cargo +stable-i686-pc-windows-msvc clean</NMakeCleanCommandLine>
+    <NMakeCleanCommandLine>cargo +nightly-i686-pc-windows-msvc clean</NMakeCleanCommandLine>
     <NMakePreprocessorDefinitions>WIN32;_DEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <OutDir>$(ProjectDir)\target\i686-pc-windows-msvc\debug</OutDir>
   </PropertyGroup>

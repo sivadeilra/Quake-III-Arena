@@ -558,28 +558,34 @@ fn CM_TraceThroughLeaf(
     tw: &mut traceWork_t,
     leaf: &cLeaf_t,
 ) {
+    trace_str("CM_TraceThroughLeaf");
     // trace line against all brushes in the leaf
 
     for i in leaf.leaf_brushes_range() {
         let brushnum = cm.leafbrushes[i];
+        trace_str("checking brush");
+        trace_i32(brushnum);
         let b = &cm.brushes[brushnum as usize];
         if client.check_brush(brushnum as usize) {
+            trace_str("already checked this brush in another leaf");
             continue; // already checked this brush in another leaf
         }
 
         if (b.contents & tw.contents) == 0 {
+            trace_str("ignoring brush because no intersection of contents");
             continue;
         }
 
-        // TODO: eliminate this copy
-        let b_copy = b.clone();
-        CM_TraceThroughBrush(cm, tw, &b_copy);
+        CM_TraceThroughBrush(cm, tw, &b);
         if tw.trace.fraction == 0.0 {
+            trace_str("fraction is non-zero, returning");
+            trace_f32(tw.trace.fraction);
             return;
         }
     }
 
     // trace line against all patches in the leaf
+    trace_str("trace line against all patches in the leaf");
     // #ifdef BSPC
     //     if (1) {
     // #else
@@ -589,20 +595,29 @@ fn CM_TraceThroughLeaf(
         //#endif
         for i in leaf.leaf_surfaces_range() {
             let patch_num = cm.leafsurfaces[i as usize] as usize;
+            trace_str("patch");
+            trace_i32(patch_num as i32);
             let opt_patch = &cm.surfaces[patch_num as usize];
             if let Some(ref patch) = opt_patch {
                 if client.check_patch(patch_num) {
+                    trace_str("already checked this patch in another leaf");
                     continue; // already checked this patch in another leaf
                 }
 
                 if (patch.contents & tw.contents) == 0 {
+                    trace_str("wrong contents");
                     continue;
                 }
 
                 CM_TraceThroughPatch(tw, patch);
                 if tw.trace.fraction == 0.0 {
+                    trace_str("fraction is zero, returning");
                     return;
                 }
+                trace_str("fraction");
+                trace_f32(tw.trace.fraction);
+            } else {
+                trace_str("no patch");
             }
         }
     }
@@ -876,12 +891,21 @@ fn CM_TraceThroughTree(
     p1: vec3_t,
     p2: vec3_t,
 ) {
+    trace_str("CM_TraceThroughTree");
+    trace_i32(num);
+    trace_f32(p1f);
+    trace_f32(p2f);
+    trace_vec3(p1);
+    trace_vec3(p2);
+
     if tw.trace.fraction <= p1f {
+        trace_str("already hit something nearer");
         return; // already hit something nearer
     }
 
     // if < 0, we are in a leaf node
     if num < 0 {
+        trace_str("in a leaf node");
         let leaf_num = -1 - num;
         let leaf_copy = cm.leafs[leaf_num as usize].clone(); // TODO: remove copy
         CM_TraceThroughLeaf(cm, client, tw, &leaf_copy);
@@ -1316,13 +1340,11 @@ fn CM_Trace(
                     CM_TraceBoundingBoxThroughCapsule(cm, client, &mut tw, model);
                 }
             } else {
-                trace_str("CM_TraceThroughLeaf");
                 CM_TraceThroughLeaf(cm, client, &mut tw, &cmod_leaf);
             }
         } else {
             let tw_start = tw.start;
             let tw_end = tw.end;
-            trace_str("CM_TraceThroughTree");
             CM_TraceThroughTree(cm, client, &mut tw, 0, 0.0, 1.0, tw_start, tw_end);
         }
     }

@@ -670,50 +670,67 @@ void CM_TraceThroughLeaf( traceWork_t *tw, cLeaf_t *leaf ) {
 	cbrush_t	*b;
 	cPatch_t	*patch;
 
+    trace_str("CM_TraceThroughLeaf");
+
 	// trace line against all brushes in the leaf
 	for ( k = 0 ; k < leaf->numLeafBrushes ; k++ ) {
 		brushnum = cm.leafbrushes[leaf->firstLeafBrush+k];
+        trace_str("checking brush");
+        trace_i32(brushnum);
 
 		b = &cm.brushes[brushnum];
 		if ( b->checkcount == cm.checkcount ) {
+            trace_str("already checked this brush in another leaf");
 			continue;	// already checked this brush in another leaf
 		}
 		b->checkcount = cm.checkcount;
 
 		if ( !(b->contents & tw->contents) ) {
-			continue;
+            trace_str("ignoring brush because no intersection of contents");
+            continue;
 		}
 
 		CM_TraceThroughBrush( tw, b );
 		if ( !tw->trace.fraction ) {
-			return;
+            trace_str("fraction is non-zero, returning");
+            trace_f32(tw->trace.fraction);
+            return;
 		}
 	}
 
 	// trace line against all patches in the leaf
+    trace_str("trace line against all patches in the leaf");
 #ifdef BSPC
 	if (1) {
 #else
 	if ( !cm_noCurves->integer ) {
 #endif
 		for ( k = 0 ; k < leaf->numLeafSurfaces ; k++ ) {
-			patch = cm.surfaces[ cm.leafsurfaces[ leaf->firstLeafSurface + k ] ];
+            trace_str("patch");
+            trace_i32(cm.leafsurfaces[leaf->firstLeafSurface + k]);
+            patch = cm.surfaces[ cm.leafsurfaces[ leaf->firstLeafSurface + k ] ];
 			if ( !patch ) {
+                trace_str("no patch");
 				continue;
 			}
 			if ( patch->checkcount == cm.checkcount ) {
+                trace_str("already checked this patch in another leaf");
 				continue;	// already checked this patch in another leaf
 			}
 			patch->checkcount = cm.checkcount;
 
 			if ( !(patch->contents & tw->contents) ) {
-				continue;
+                trace_str("wrong contents");
+                continue;
 			}
 			
 			CM_TraceThroughPatch( tw, patch );
 			if ( !tw->trace.fraction ) {
-				return;
+                trace_str("fraction is zero, returning");
+                return;
 			}
+            trace_str("fraction");
+            trace_f32(tw->trace.fraction);
 		}
 	}
 }
@@ -1033,12 +1050,21 @@ void CM_TraceThroughTree( traceWork_t *tw, int num, float p1f, float p2f, vec3_t
 	int			side;
 	float		midf;
 
-	if (tw->trace.fraction <= p1f) {
+    trace_str("CM_TraceThroughTree");
+    trace_i32(num);
+    trace_f32(p1f);
+    trace_f32(p2f);
+    trace_vec3(p1);
+    trace_vec3(p2);
+    
+    if (tw->trace.fraction <= p1f) {
+        trace_str("already hit something nearer");
 		return;		// already hit something nearer
 	}
 
 	// if < 0, we are in a leaf node
 	if (num < 0) {
+        trace_str("in a leaf node");
 		CM_TraceThroughLeaf( tw, &cm.leafs[-1-num] );
 		return;
 	}
@@ -1359,11 +1385,9 @@ void __cdecl real_CM_Trace( trace_t *results, const vec3_t start, const vec3_t e
 				}
 			}
 			else {
-                trace_str("CM_TraceThroughLeaf");
 				CM_TraceThroughLeaf( &tw, &cmod->leaf );
 			}
 		} else {
-            trace_str("CM_TraceThroughTree");
             CM_TraceThroughTree( &tw, 0, 0, 1, tw.start, tw.end );
 		}
 	}

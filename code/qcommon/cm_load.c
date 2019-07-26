@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include <windows.h>
 #include "cm_local.h"
+#include "port_tracer.h"
 
 #ifdef BSPC
 
@@ -493,6 +494,8 @@ void CMod_LoadPatches( lump_t *surfs, lump_t *verts ) {
 	int			width, height;
 	int			shaderNum;
 
+    trace_str("CMod_LoadPatches");
+
 	in = (void *)(cmod_base + surfs->fileofs);
 	if (surfs->filelen % sizeof(*in))
 		Com_Error (ERR_DROP, "MOD_LoadBmodel: funny lump size");
@@ -503,10 +506,16 @@ void CMod_LoadPatches( lump_t *surfs, lump_t *verts ) {
 	if (verts->filelen % sizeof(*dv))
 		Com_Error (ERR_DROP, "MOD_LoadBmodel: funny lump size");
 
+    trace_i32(cm.numSurfaces);
+    trace_i32(verts->filelen / sizeof(*dv));
+    trace_str(".");
+
+
 	// scan through all the surfaces, but only load patches,
 	// not planar faces
 	for ( i = 0 ; i < count ; i++, in++ ) {
 		if ( LittleLong( in->surfaceType ) != MST_PATCH ) {
+            trace_str("ignore");
 			continue;		// ignore other surfaces
 		}
 		// FIXME: check for non-colliding patches
@@ -520,20 +529,29 @@ void CMod_LoadPatches( lump_t *surfs, lump_t *verts ) {
 		if ( c > MAX_PATCH_VERTS ) {
 			Com_Error( ERR_DROP, "ParseMesh: MAX_PATCH_VERTS" );
 		}
+        trace_i32(width);
+        trace_i32(height);
 
 		dv_p = dv + LittleLong( in->firstVert );
+        trace_i32(LittleLong(in->firstVert));
 		for ( j = 0 ; j < c ; j++, dv_p++ ) {
 			points[j][0] = LittleFloat( dv_p->xyz[0] );
 			points[j][1] = LittleFloat( dv_p->xyz[1] );
 			points[j][2] = LittleFloat( dv_p->xyz[2] );
+            trace_vec3(points[j]);
 		}
 
+        trace_str("shaderNum");
 		shaderNum = LittleLong( in->shaderNum );
+        trace_i32(shaderNum);
 		patch->contents = cm.shaders[shaderNum].contentFlags;
+        trace_i32(patch->contents);
 		patch->surfaceFlags = cm.shaders[shaderNum].surfaceFlags;
+        trace_i32(patch->surfaceFlags);
 
 		// create the internal facet structure
 		patch->pc = CM_GeneratePatchCollide( width, height, points );
+        trace_str(".");
 	}
 }
 
@@ -560,69 +578,14 @@ unsigned CM_Checksum(dheader_t *header) {
 	return LittleLong(Com_BlockChecksum(checksums, 11 * 4));
 }
 
-void __cdecl rust_LoadMap(const unsigned char* buf, size_t length);
-
-/*
-==================
-CM_LoadMap
-
-Loads in the map and all submodels
-==================
-*/
-void CM_LoadMap( const char *name, qboolean clientload, int *checksum ) {
-	int				*buf;
-	int				i;
-	dheader_t		header;
-	int				length;
-	static unsigned	last_checksum;
-
-	if ( !name || !name[0] ) {
-		Com_Error( ERR_DROP, "CM_LoadMap: NULL name" );
-	}
-
-#ifndef BSPC
-	cm_noAreas = Cvar_Get ("cm_noAreas", "0", CVAR_CHEAT);
-	cm_noCurves = Cvar_Get ("cm_noCurves", "0", CVAR_CHEAT);
-	cm_playerCurveClip = Cvar_Get ("cm_playerCurveClip", "1", CVAR_ARCHIVE|CVAR_CHEAT );
-#endif
-	Com_DPrintf( "CM_LoadMap( %s, %i )\n", name, clientload );
-
-	if ( !strcmp( cm.name, name ) && clientload ) {
-		*checksum = last_checksum;
-		return;
-	}
-
-	// free old stuff
-	Com_Memset( &cm, 0, sizeof( cm ) );
-	CM_ClearLevelPatches();
-
-	if ( !name[0] ) {
-		cm.numLeafs = 1;
-		cm.numClusters = 1;
-		cm.numAreas = 1;
-		cm.cmodels = Hunk_Alloc( sizeof( *cm.cmodels ), h_high );
-		*checksum = 0;
-		return;
-	}
-
-	//
-	// load the file
-	//
-#ifndef BSPC
-	length = FS_ReadFile( name, (void **)&buf );
-#else
-	length = LoadQuakeFile((quakefile_t *) name, (void **)&buf);
-#endif
-
-	if ( !buf ) {
-		Com_Error (ERR_DROP, "Couldn't load %s", name);
-	}
-
-	AllocConsole();
-	rust_LoadMap(buf, length);
-
-	last_checksum = LittleLong (Com_BlockChecksum (buf, length));
-	*checksum = last_checksum;
+// called by Rust
+void __cdecl ref_LoadMap(
+    const char* name,
+    int clientload,
+    const char* buf, size_t length, int* checksum) {
+    int				i;
+    dheader_t		header;
+    *checksum = LittleLong (Com_BlockChecksum (buf, length));
 
 	header = *(dheader_t *)buf;
 	for (i=0 ; i<sizeof(dheader_t)/4 ; i++) {
@@ -650,9 +613,6 @@ void CM_LoadMap( const char *name, qboolean clientload, int *checksum ) {
 	CMod_LoadVisibility( &header.lumps[LUMP_VISIBILITY] );
 	CMod_LoadPatches( &header.lumps[LUMP_SURFACES], &header.lumps[LUMP_DRAWVERTS] );
 
-	// we are NOT freeing the file, because it is cached for the ref
-	FS_FreeFile (buf);
-
 	CM_InitBoxHull ();
 
 	CM_FloodAreaConnections ();
@@ -662,6 +622,79 @@ void CM_LoadMap( const char *name, qboolean clientload, int *checksum ) {
 		Q_strncpyz( cm.name, name, sizeof( cm.name ) );
 	}
 }
+
+// calls into Rust
+void __cdecl checked_LoadMap(
+    const char* name,
+    int clientLoad,
+    const unsigned char* buf, size_t length, int* checksum);
+
+
+/*
+==================
+CM_LoadMap
+
+Loads in the map and all submodels
+==================
+*/
+void CM_LoadMap(const char* name, qboolean clientload, int* checksum) {
+    int* buf;
+    int				length;
+    static unsigned	last_checksum;
+
+    if (!name || !name[0]) {
+        Com_Error(ERR_DROP, "CM_LoadMap: NULL name");
+    }
+
+#ifndef BSPC
+    cm_noAreas = Cvar_Get("cm_noAreas", "0", CVAR_CHEAT);
+    cm_noCurves = Cvar_Get("cm_noCurves", "0", CVAR_CHEAT);
+    cm_playerCurveClip = Cvar_Get("cm_playerCurveClip", "1", CVAR_ARCHIVE | CVAR_CHEAT);
+#endif
+    Com_DPrintf("CM_LoadMap( %s, %i )\n", name, clientload);
+
+    if (!strcmp(cm.name, name) && clientload) {
+        *checksum = last_checksum;
+        return;
+    }
+
+    // free old stuff
+    Com_Memset(&cm, 0, sizeof(cm));
+    CM_ClearLevelPatches();
+
+    if (!name[0]) {
+        cm.numLeafs = 1;
+        cm.numClusters = 1;
+        cm.numAreas = 1;
+        cm.cmodels = Hunk_Alloc(sizeof(*cm.cmodels), h_high);
+        *checksum = 0;
+        return;
+    }
+
+    //
+    // load the file
+    //
+#ifndef BSPC
+    length = FS_ReadFile(name, (void**)& buf);
+#else
+    length = LoadQuakeFile((quakefile_t*)name, (void**)& buf);
+#endif
+
+    if (!buf) {
+        Com_Error(ERR_DROP, "Couldn't load %s", name);
+    }
+
+    AllocConsole();
+
+    checked_LoadMap(name, clientload, (const unsigned char*)buf, length, checksum);
+
+    last_checksum = *checksum;
+
+    // we are NOT freeing the file, because it is cached for the ref
+    FS_FreeFile(buf);
+
+}
+
 
 /*
 ==================

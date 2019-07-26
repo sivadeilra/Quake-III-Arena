@@ -33,9 +33,10 @@ use crate::qfiles::*;
 use crate::range_len;
 use crate::zerocopy::*;
 use lazy_static::lazy_static;
-use log::{debug, info};
+use log::{debug, info, warn};
 use std::ops::Range;
 use std::sync::Mutex;
+use crate::port_trace::*;
 
 lazy_static! {
     pub static ref GLOBAL_CLIP_MAP: Mutex<Option<clipMap_t>> = Mutex::new(None);
@@ -422,12 +423,18 @@ fn CMod_LoadPatches(
     let dpatches = slice_from_bytes::<dsurface_t>(file.get_lump(surfs)?);
     let dv = slice_from_bytes::<drawVert_t>(file.get_lump(verts)?);
 
+    trace_str("CMod_LoadPatches");
+    trace_i32(dpatches.len() as i32);
+    trace_i32(dv.len() as i32);
+    trace_str(".");
+
     // scan through all the surfaces, but only load patches,
     // not planar faces
     dpatches
         .iter()
         .map(|dpatch| {
             if LittleLong(dpatch.surfaceType) != MST_PATCH {
+                trace_str("ignore");
                 return Ok(None); // ignore other surfaces
             }
             // FIXME: check for non-colliding patches
@@ -439,26 +446,39 @@ fn CMod_LoadPatches(
             if c > MAX_PATCH_VERTS {
                 return Err(Error::Str("ParseMesh: MAX_PATCH_VERTS"));
             }
+            trace_i32(width);
+            trace_i32(height);
 
             let first_vert = LittleLong(dpatch.firstVert) as usize;
+            trace_i32(first_vert as i32);
+            if first_vert as usize + c > dv.len() {
+                warn!("patch has bogus value for first_vert, goes beyond verts chunk");
+                return Err(Error::Str("patch has bogus value for first_vert, goes beyond verts chunk"));
+            }
             for (p, dv_p) in points[..c]
                 .iter_mut()
                 .zip(dv[first_vert..first_vert + c].iter())
             {
                 *p = LittleVec3(dv_p.xyz);
+                trace_vec3(*p);
             }
 
-            // create the internal facet structure
-            let pc = CM_GeneratePatchCollide(width as usize, height as usize, &points);
-
             let shaderNum = LittleLong(dpatch.shaderNum);
+            trace_str("shaderNum");
+            trace_i32(shaderNum);
             let shader = get_item_checked(shaderNum, shaders)?;
+            trace_i32(shader.contentFlags);
+            trace_i32(shader.surfaceFlags);
 
-            Ok(Some(Box::new(cPatch_t {
+            // create the internal facet structure
+            let pc = CM_GeneratePatchCollide(width as usize, height as usize, &points)?;
+            let result = Some(Box::new(cPatch_t {
                 contents: shader.contentFlags,
                 surfaceFlags: shader.surfaceFlags,
                 pc: pc,
-            })))
+            }));
+            trace_str(".");
+            Ok(result)
         })
         .collect()
 }
@@ -645,12 +665,38 @@ pub fn CM_LoadMapFromSlice(name: &str, buf: &[u8]) -> Result<clipMap_t, Error> {
     Ok(cm)
 }
 
+extern "C" {
+    fn ref_LoadMap(name: *const u8, clientLoad: i32, buf: *const u8, length: usize, checksum: *mut u32);
+}
+
+// called by C
 #[no_mangle]
-unsafe extern "C" fn rust_LoadMap(data: *const u8, len: usize) {
-    let s = core::slice::from_raw_parts(data, len);
-    debug!("loading map, data len = {} bytes", len);
-    let new_cm = CM_LoadMapFromSlice("", s).unwrap();
+unsafe extern "C" fn checked_LoadMap(
+    name: *const u8,
+    clientLoad: i32,
+    buf: *const u8, len: usize, checksum_c: *mut u32) {
+        let name = name as usize;
+    let data: &'static [u8] = core::slice::from_raw_parts(buf, len);
+    let (ref_checksum, _port_checksum) = crate::port_trace::parallel_trace(move |_tracer| -> u32 {
+        // ref
+        let mut checksum: u32 = 0;
+        ref_LoadMap(name as *const u8, clientLoad, data.as_ptr(), data.len(), &mut checksum);
+        checksum
+    },
+    move |_tracer| -> u32 {
+        // port
+        let mut checksum: u32 = 0;
+        rust_LoadMap(data, &mut checksum);
+        checksum
+    });
+    *checksum_c = ref_checksum;
+}
+
+fn rust_LoadMap(data: &[u8], checksum: &mut u32) {
+    debug!("loading map, data len = {} bytes", data.len());
+    let new_cm = CM_LoadMapFromSlice("", data).unwrap();
     *cm() = Some(new_cm);
+    *checksum = 0;
 }
 
 pub fn cm() -> std::sync::MutexGuard<'static, Option<clipMap_t>> {

@@ -4,6 +4,8 @@
 #![allow(unused_macros)]
 #![allow(non_upper_case_globals)]
 #![allow(unused_imports)]
+#![feature(thread_spawn_unchecked)]
+
 
 macro_rules! expand_axis {
     ($axis:ident) => {};
