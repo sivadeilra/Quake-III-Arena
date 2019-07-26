@@ -233,10 +233,17 @@ The normal will point out of the clock for clockwise ordered points
 =====================
 */
 fn CM_PlaneFromPoints(a: vec3_t, b: vec3_t, c: vec3_t) -> Option<plane_t> {
+    trace_str("CM_PlaneFromPoints");
+
     let d1 = b - a;
     let d2 = c - a;
-    let normal = CrossProduct(d2, d1).normalize()?;
+    let normal = if let Some(cp) = CrossProduct(d2, d1).normalize() { cp } else {
+        trace_str("cross product is zero");
+        return None;
+    };
+    trace_vec3(normal);
     let dist = a.dot(normal);
+    trace_f32(dist);
     Some(plane_t { normal, dist })
 }
 
@@ -507,11 +514,17 @@ pub struct PlaneEqualOutput {
     pub is_equal: bool,
 }
 pub fn CM_PlaneEqual(a: plane_t, b: plane_t) -> PlaneEqualOutput {
+    trace_str("CM_PlaneEqual");
+    trace_vec3(a.normal);
+    trace_f32(a.dist);
+    trace_vec3(b.normal);
+    trace_f32(b.dist);
     fn is_close_to(a: plane_t, b: plane_t) -> bool {
         a.normal.is_close_to(b.normal, NORMAL_EPSILON) && (a.dist - b.dist).abs() < DIST_EPSILON
     }
 
     if is_close_to(a, b) {
+        trace_str("planes are close");
         return PlaneEqualOutput {
             is_flipped: false,
             is_equal: true,
@@ -523,12 +536,14 @@ pub fn CM_PlaneEqual(a: plane_t, b: plane_t) -> PlaneEqualOutput {
         dist: -b.dist,
     };
     if is_close_to(a, inv_b) {
+        trace_str("planes are close (flipped)");
         return PlaneEqualOutput {
             is_flipped: true,
             is_equal: true,
         };
     }
 
+    trace_str("planes are not equal");
     PlaneEqualOutput {
         is_flipped: false,
         is_equal: false,
@@ -584,38 +599,56 @@ pub fn CM_FindPlane2(
 
 fn add_plane(planes: &mut Vec<patchPlane_t>, plane: plane_t) {
     assert!(planes.len() < MAX_PATCH_PLANES);
+    trace_str("adding plane at index:");
+    trace_i32(planes.len() as i32);
+    trace_vec3(plane.normal);
+    trace_f32(plane.dist);
+    trace_str(".");
     planes.push(patchPlane_t {
         plane: plane,
         signbits: CM_SignbitsForNormal(plane.normal),
     });
 }
 
-/*
-==================
-CM_FindPlane
-==================
-*/
 fn CM_FindPlane(
     planes: &mut Vec<patchPlane_t>,
     p1: vec3_t,
     p2: vec3_t,
     p3: vec3_t,
 ) -> Result<i32, Error> {
+    trace_str("CM_FindPlane");
+    trace_vec3(p1);
+    trace_vec3(p2);
+    trace_vec3(p3);
+
     let new_plane = if let Some(new_plane) = CM_PlaneFromPoints(p1, p2, p3) { new_plane } else {
+        trace_str("points do not form plane");
         return Ok(-1);
     };
+    trace_vec3(new_plane.normal);
+    trace_f32(new_plane.dist);
 
     // see if the points are close enough to an existing plane
     for (i, p) in planes.iter().enumerate() {
+        trace_str("testing plane:");
+        trace_i32(i as i32);
+        trace_vec3(p.plane.normal);
+        trace_f32(p.plane.dist);
         let p = p.plane;
         if new_plane.normal.dot(p.normal) < 0.0 {
+            trace_str("negative dot product");
             continue; // allow backwards planes?
         }
+        trace_str("checking points");
         let point_is_good =
             move |pN: vec3_t| is_close_to(pN.dot(p.normal), p.dist, PLANE_TRI_EPSILON);
 
         if point_is_good(p1) && point_is_good(p2) && point_is_good(p3) {
+            trace_str("using existing plane:");
+            trace_i32(i as i32);
             return Ok(i as i32);
+        } else {
+            trace_str("skipping because point is too far from plane");
         }
     }
 
@@ -642,18 +675,19 @@ fn CM_PointOnPlaneSide(planes: &[patchPlane_t], p: vec3_t, planeNum: i32) -> Sid
     }
 }
 
-/*
-==================
-CM_GridPlane
-==================
-*/
 fn CM_GridPlane(gridPlanes: &GridPlanes, i: usize, j: usize, tri: usize) -> Result<usize, Error> {
+    trace_str("CM_GridPlane");
+
     let p = gridPlanes[i][j][tri];
     if p != -1 {
+        trace_str("returning first grid plane");
+        trace_i32(p);
         return Ok(p as usize);
     }
     let p = gridPlanes[i][j][tri ^ 1];
     if p != -1 {
+        trace_str("returning second grid plane");
+        trace_i32(p);
         return Ok(p as usize);
     }
 
@@ -674,6 +708,11 @@ fn CM_EdgePlaneNum(
     let p;
     let p1;
     let p2;
+
+    trace_str("CM_EdgePlaneNum");
+    trace_i32(i as i32);
+    trace_i32(j as i32);
+    trace_i32(k as i32);
 
     match k {
         0 => {
@@ -858,18 +897,8 @@ fn CM_ValidateFacet(planes: &[patchPlane_t], facet: &facet_t) -> bool {
     return true;
 }
 
-/*
-==================
-CM_AddFacetBevels
-==================
-*/
 fn CM_AddFacetBevels(planes: &mut Vec<patchPlane_t>, facet: &mut facet_t) {
-    // int i, j, k, l;
-    // int dir, flipped;
-    // float d, newplane[4];
-    // winding_t *w2;
-    // vec3_t mins, maxs, vec, vec2;
-
+    trace_str("CM_AddFacetBevels");
     let mut w = {
         let plane = planes[facet.surfacePlane as usize].plane;
         BaseWindingForPlane(plane.normal, plane.dist)
@@ -886,12 +915,17 @@ fn CM_AddFacetBevels(planes: &mut Vec<patchPlane_t>, facet: &mut facet_t) {
         ChopWindingInPlace(&mut w, plane.normal, plane.dist, 0.1);
     }
     if w.is_empty() {
+        trace_str("winding is empty");
         return;
     }
 
     let bounds = WindingBounds(&w);
+    trace_str("winding bounds");
+    trace_vec3(bounds.mins);
+    trace_vec3(bounds.maxs);
 
     // add the axial planes
+    trace_str("add the axial planes");
     for axis in 0..3 {
         for &dir in [-1, 1].into_iter() {
             let mut plane = plane_t {
@@ -925,6 +959,7 @@ fn CM_AddFacetBevels(planes: &mut Vec<patchPlane_t>, facet: &mut facet_t) {
             }
         }
     }
+    trace_str("add the edge bevels");
     //
     // add the edge bevels
     //
@@ -1019,6 +1054,8 @@ fn CM_AddFacetBevels(planes: &mut Vec<patchPlane_t>, facet: &mut facet_t) {
         facet.borderInward[facet.numBorders as usize] = true;
         facet.numBorders += 1;
     }
+
+    trace_str("end");
 }
 
 // was enum
@@ -1033,7 +1070,10 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> Result<patchCollide_t, Error> {
     let mut facets: Vec<facet_t> = Vec::new();
     let mut planes: Vec<patchPlane_t> = Vec::new();
 
+    trace_str("CM_PatchCollideFromGrid");
+
     // find the planes for each triangle of the grid
+    trace_str("find the planes for each triangle of the grid");
     for i in 0..grid.width as usize - 1 {
         for j in 0..grid.height as usize - 1 {
             let p1 = grid.points[i][j];
@@ -1049,8 +1089,13 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> Result<patchCollide_t, Error> {
     }
 
     // create the borders for each facet
+    trace_str("create the borders for each facet");
     for i in 0..grid.width as usize - 1 {
         for j in 0..grid.height as usize - 1 {
+            trace_str("iter: i,j");
+            trace_i32(i as i32);
+            trace_i32(j as i32);
+
             let mut borders: [i32; 4] = [0; 4];
             let mut noAdjust: [bool; 4] = [false; 4];
 
@@ -1065,6 +1110,8 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> Result<patchCollide_t, Error> {
                 borders[EN_TOP] =
                     CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 0)?;
             }
+            trace_str("borders[EN_TOP]:");
+            trace_i32(borders[EN_TOP]);
 
             borders[EN_BOTTOM] = -1;
             if j < grid.height - 2 {
@@ -1077,7 +1124,10 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> Result<patchCollide_t, Error> {
                 borders[EN_BOTTOM] =
                     CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 2)?;
             }
+            trace_str("borders[EN_BOTTOM]:");
+            trace_i32(borders[EN_BOTTOM]);
 
+            // EN_LEFT
             borders[EN_LEFT] = -1;
             if i > 0 {
                 borders[EN_LEFT] = gridPlanes[i - 1][j][0];
@@ -1089,7 +1139,10 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> Result<patchCollide_t, Error> {
                 borders[EN_LEFT] =
                     CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 3)?;
             }
+            trace_str("borders[EN_LEFT]:");
+            trace_i32(borders[EN_LEFT]);
 
+            // EN_RIGHT
             borders[EN_RIGHT] = -1;
             if i < grid.width - 2 {
                 borders[EN_RIGHT] = gridPlanes[i + 1][j][1];
@@ -1101,11 +1154,15 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> Result<patchCollide_t, Error> {
                 borders[EN_RIGHT] =
                     CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 1)?;
             }
+            trace_str("borders[EN_RIGHT]:");
+            trace_i32(borders[EN_RIGHT]);
 
             if gridPlanes[i][j][0] == gridPlanes[i][j][1] {
                 if gridPlanes[i][j][0] == -1 {
+                    trace_str("degenerate");
                     continue; // degenerate
                 }
+                trace_str("adding facet:");
                 let mut facet = facet_t::default();
                 facet.surfacePlane = gridPlanes[i][j][0];
                 facet.numBorders = 4;
@@ -1124,6 +1181,7 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> Result<patchCollide_t, Error> {
                 }
             } else {
                 // two seperate triangles
+                trace_str("two separate triangles");
                 {
                     let mut facet = facet_t::default();
                     facet.surfacePlane = gridPlanes[i][j][0];
@@ -1173,6 +1231,34 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> Result<patchCollide_t, Error> {
             }
         }
     }
+
+    trace_str("facets:");
+    trace_i32(facets.len() as i32);
+    for f in facets.iter() {
+        trace_str("facet:");
+        trace_i32(f.surfacePlane);
+        trace_i32(f.numBorders);
+        trace_str("...borderPlanes");
+        for &b in f.borderPlanes[..f.numBorders as usize].iter() {
+            trace_i32(b);
+        }
+        trace_str("...borderInward");
+        for &inward in f.borderInward[..f.numBorders as usize].iter() {
+            trace_i32(inward as i32);
+        }
+        trace_str("...borderNoAdjust");
+        for &na in f.borderNoAdjust[..f.numBorders as usize].iter() {
+            trace_i32(na as i32);
+        }
+    }
+    trace_str("planes:");
+    trace_i32(planes.len() as i32);
+    for p in planes.iter() {
+        trace_str("plane:");
+        trace_vec3(p.plane.normal);
+        trace_f32(p.plane.dist);
+    }
+    trace_str(".");
 
     // copy the results out
     Ok(patchCollide_t {

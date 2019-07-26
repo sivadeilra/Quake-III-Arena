@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 
 #include "cm_local.h"
-
+#include "port_tracer.h"
 
 // counters are only bumped when running single threaded,
 // because they are an awefull coherence problem
@@ -205,7 +205,11 @@ winding_t *BaseWindingForPlane (vec3_t normal, vec_t dist)
 	vec_t	max, v;
 	vec3_t	org, vright, vup;
 	winding_t	*w;
-	
+
+    trace_str("BaseWindingForPlane");
+    trace_vec3(normal);
+    trace_f32(dist);
+
 // find the major axis
 
 	max = -MAX_MAP_BOUNDS;
@@ -233,6 +237,8 @@ winding_t *BaseWindingForPlane (vec3_t normal, vec_t dist)
 		vup[0] = 1;
 		break;		
 	}
+    trace_str("vup");
+    trace_vec3(vup);
 
 	v = DotProduct (vup, normal);
 	VectorMA (vup, -v, normal, vup);
@@ -259,7 +265,13 @@ winding_t *BaseWindingForPlane (vec3_t normal, vec_t dist)
 	
 	VectorSubtract (org, vright, w->p[3]);
 	VectorSubtract (w->p[3], vup, w->p[3]);
-	
+
+    trace_vec3(w->p[0]);
+    trace_vec3(w->p[1]);
+    trace_vec3(w->p[2]);
+    trace_vec3(w->p[3]);
+    trace_str(".");
+
 	w->numpoints = 4;
 	
 	return w;	

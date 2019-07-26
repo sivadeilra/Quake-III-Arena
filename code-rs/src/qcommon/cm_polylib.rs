@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
 use crate::prelude::*;
+use crate::port_trace::*;
 use log::warn;
 
 pub type winding_t = Vec<vec3_t>;
@@ -120,7 +121,12 @@ pub fn WindingCenter(w: &winding_t) -> vec3_t {
 }
 
 pub fn BaseWindingForPlane(normal: vec3_t, dist: vec_t) -> winding_t {
+    trace_str("BaseWindingForPlane");
+    trace_vec3(normal);
+    trace_f32(dist);
+
     // find the major axis
+    /*
     let v_x = normal[0].abs();
     let v_y = normal[1].abs();
     let v_z = normal[2].abs();
@@ -134,6 +140,27 @@ pub fn BaseWindingForPlane(normal: vec3_t, dist: vec_t) -> winding_t {
         // z is largest
         vec3_t::unit(0)
     };
+    */
+    let mut vup = vec3_t::ORIGIN;
+    {
+        let mut max: f32 = -MAX_MAP_BOUNDS;
+        let mut x: i32 = -1;
+        for i in 0..3 {
+            let v = normal[i].abs();
+            if v > max {
+                x = i as i32;
+                max = v;
+            }
+        }
+        assert!(x != -1);
+        match x {
+            0 | 1 => vup[2] = 1.0,
+            2 => vup[0] = 1.0,
+            _ => panic!()
+        }
+    }
+    trace_str("vup");
+    trace_vec3(vup);
 
     let org = normal.scale(dist);
     let v = vup.dot(normal);
@@ -149,6 +176,11 @@ pub fn BaseWindingForPlane(normal: vec3_t, dist: vec_t) -> winding_t {
     w.push(org + vright + vup);
     w.push(org + vright - vup);
     w.push(org - vright - vup);
+    trace_vec3(w[0]);
+    trace_vec3(w[1]);
+    trace_vec3(w[2]);
+    trace_vec3(w[3]);
+    trace_str(".");
     w
 }
 

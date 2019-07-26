@@ -216,8 +216,8 @@ where
     let secondary_name = "REF";
     let primary_name = "TEST";
 
-    let (primary_tx, secondary_rx) = mpsc::sync_channel(0);
-    let (secondary_tx, primary_rx) = mpsc::sync_channel(0);
+    let (primary_tx, secondary_rx) = mpsc::sync_channel(1);
+    let (secondary_tx, primary_rx) = mpsc::sync_channel(1);
 
     let primary_tracer = Tracer {
         role: Role::Primary(PrimaryRole {

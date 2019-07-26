@@ -384,6 +384,8 @@ fn CM_TraceThroughPatch(tw: &mut traceWork_t, patch: &cPatch_t) {
 }
 
 fn CM_TraceThroughBrush(cm: &clipMap_t, tw: &mut traceWork_t, brush: &cbrush_t) {
+    trace_str("CM_TraceThroughBrush");
+
     let mut enterFrac: f32 = -1.0;
     let mut leaveFrac: f32 = 1.0;
 
@@ -400,6 +402,7 @@ fn CM_TraceThroughBrush(cm: &clipMap_t, tw: &mut traceWork_t, brush: &cbrush_t) 
 
     let mut leadside: Option<&cbrushside_t> = None;
 
+    trace_i32(tw.sphere.use_.0);
     if tw.sphere.use_.into() {
         //
         // compare the trace against all planes of the brush
@@ -473,14 +476,30 @@ fn CM_TraceThroughBrush(cm: &clipMap_t, tw: &mut traceWork_t, brush: &cbrush_t) 
         // find the latest time the trace crosses a plane towards the interior
         // and the earliest time the trace crosses a plane towards the exterior
         //
+        trace_str("compare the trace against all planes of the brush");
+        trace_i32(brush.firstSide);
+        trace_i32(brush.numsides);
         for side in brush.sides(cm).iter() {
+            trace_str("side:");
             let plane = side.plane(cm);
+            trace_str("plane_num");
+            trace_i32(side.plane_num);
+
+            trace_str("plane.signbits");
+            trace_i32(plane.signbits as i32);
+            trace_vec3(tw.offsets[plane.signbits as usize]);
+            trace_vec3(plane.normal);
+            trace_f32(plane.dist);
 
             // adjust the plane distance apropriately for mins/maxs
+            trace_str("computing distance");
             let dist = plane.dist - DotProduct(tw.offsets[plane.signbits as usize], plane.normal);
+            trace_f32(dist);
 
             let d1 = DotProduct(tw.start, plane.normal) - dist;
             let d2 = DotProduct(tw.end, plane.normal) - dist;
+            trace_f32(d1);
+            trace_f32(d2);
 
             if d2 > 0.0 {
                 getout = true; // endpoint is not in solid
@@ -559,6 +578,7 @@ fn CM_TraceThroughLeaf(
     leaf: &cLeaf_t,
 ) {
     trace_str("CM_TraceThroughLeaf");
+    trace_f32(tw.trace.fraction);
     // trace line against all brushes in the leaf
 
     for i in leaf.leaf_brushes_range() {
@@ -577,12 +597,15 @@ fn CM_TraceThroughLeaf(
         }
 
         CM_TraceThroughBrush(cm, tw, &b);
+        trace_f32(tw.trace.fraction);
         if tw.trace.fraction == 0.0 {
-            trace_str("fraction is non-zero, returning");
-            trace_f32(tw.trace.fraction);
+            trace_str("fraction is zero, returning");
             return;
         }
     }
+
+    trace_str("fraction");
+    trace_f32(tw.trace.fraction);
 
     // trace line against all patches in the leaf
     trace_str("trace line against all patches in the leaf");

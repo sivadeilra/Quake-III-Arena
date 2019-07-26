@@ -126,17 +126,21 @@ The normal will point out of the clock for clockwise ordered points
 =====================
 */
 static qboolean CM_PlaneFromPoints( vec4_t plane, vec3_t a, vec3_t b, vec3_t c ) {
-	vec3_t	d1, d2;
+    vec3_t	d1, d2;
 
-	VectorSubtract( b, a, d1 );
+    trace_str("CM_PlaneFromPoints");
+    VectorSubtract( b, a, d1 );
 	VectorSubtract( c, a, d2 );
 	CrossProduct( d2, d1, plane );
 	if ( VectorNormalize( plane ) == 0 ) {
+        trace_str("cross product is zero");
 		return qfalse;
 	}
 
 	plane[3] = DotProduct( a, plane );
-	return qtrue;
+    trace_vec3(plane);
+    trace_f32(plane[3]);
+    return qtrue;
 }
 
 
@@ -432,13 +436,20 @@ CM_PlaneEqual
 int CM_PlaneEqual(patchPlane_t *p, float plane[4], int *flipped) {
 	float invplane[4];
 
+    trace_str("CM_PlaneEqual");
+    trace_vec3(p->plane);
+    trace_f32(p->plane[3]);
+    trace_vec3(plane);
+    trace_f32(plane[3]);
+
 	if (
 	   fabs(p->plane[0] - plane[0]) < NORMAL_EPSILON
 	&& fabs(p->plane[1] - plane[1]) < NORMAL_EPSILON
 	&& fabs(p->plane[2] - plane[2]) < NORMAL_EPSILON
 	&& fabs(p->plane[3] - plane[3]) < DIST_EPSILON )
 	{
-		*flipped = qfalse;
+        trace_str("planes are close");
+        *flipped = qfalse;
 		return qtrue;
 	}
 
@@ -451,10 +462,12 @@ int CM_PlaneEqual(patchPlane_t *p, float plane[4], int *flipped) {
 	&& fabs(p->plane[2] - invplane[2]) < NORMAL_EPSILON
 	&& fabs(p->plane[3] - invplane[3]) < DIST_EPSILON )
 	{
-		*flipped = qtrue;
+        trace_str("planes are close (flipped)");
+        *flipped = qtrue;
 		return qtrue;
 	}
 
+    trace_str("planes are not equal");
 	return qfalse;
 }
 
@@ -483,6 +496,14 @@ void CM_SnapVector(vec3_t normal) {
 	}
 }
 
+void trace_add_plane(float plane[4]) {
+    trace_str("adding plane at index:");
+    trace_i32(numPlanes);
+    trace_vec3(plane);
+    trace_f32(plane[3]);
+    trace_str(".");
+}
+
 /*
 ==================
 CM_FindPlane2
@@ -504,6 +525,7 @@ int CM_FindPlane2(float plane[4], int *flipped) {
 	Vector4Copy( plane, planes[numPlanes].plane );
 	planes[numPlanes].signbits = CM_SignbitsForNormal( plane );
 
+    trace_add_plane(plane);
 	numPlanes++;
 
 	*flipped = qfalse;
@@ -521,32 +543,51 @@ static int CM_FindPlane( float *p1, float *p2, float *p3 ) {
 	int		i;
 	float	d;
 
+    trace_str("CM_FindPlane");
+    trace_vec3(p1);
+    trace_vec3(p2);
+    trace_vec3(p3);
+
 	if ( !CM_PlaneFromPoints( plane, p1, p2, p3 ) ) {
+        trace_str("points do not form plane");
 		return -1;
 	}
+    trace_vec3(plane);
+    trace_f32(plane[3]); // dist
 
 	// see if the points are close enough to an existing plane
 	for ( i = 0 ; i < numPlanes ; i++ ) {
-		if ( DotProduct( plane, planes[i].plane ) < 0 ) {
+        trace_str("testing plane:");
+        trace_i32(i);
+        trace_vec3(planes[i].plane);
+        trace_f32(planes[i].plane[3]);
+        if ( DotProduct( plane, planes[i].plane ) < 0 ) {
+            trace_str("negative dot product");
 			continue;	// allow backwards planes?
 		}
 
+        trace_str("checking points");
 		d = DotProduct( p1, planes[i].plane ) - planes[i].plane[3];
 		if ( d < -PLANE_TRI_EPSILON || d > PLANE_TRI_EPSILON ) {
-			continue;
+            trace_str("skipping because point is too far from plane");
+            continue;
 		}
 
 		d = DotProduct( p2, planes[i].plane ) - planes[i].plane[3];
 		if ( d < -PLANE_TRI_EPSILON || d > PLANE_TRI_EPSILON ) {
-			continue;
+            trace_str("skipping because point is too far from plane");
+            continue;
 		}
 
 		d = DotProduct( p3, planes[i].plane ) - planes[i].plane[3];
 		if ( d < -PLANE_TRI_EPSILON || d > PLANE_TRI_EPSILON ) {
-			continue;
+            trace_str("skipping because point is too far from plane");
+            continue;
 		}
 
 		// found it
+        trace_str("using existing plane:");
+        trace_i32(i);
 		return i;
 	}
 
@@ -558,6 +599,7 @@ static int CM_FindPlane( float *p1, float *p2, float *p3 ) {
 	Vector4Copy( plane, planes[numPlanes].plane );
 	planes[numPlanes].signbits = CM_SignbitsForNormal( plane );
 
+    trace_add_plane(plane);
 	numPlanes++;
 
 	return numPlanes-1;
@@ -598,13 +640,19 @@ CM_GridPlane
 static int	CM_GridPlane( int gridPlanes[MAX_GRID_SIZE][MAX_GRID_SIZE][2], int i, int j, int tri ) {
 	int		p;
 
+    trace_str("CM_GridPlane");
+
 	p = gridPlanes[i][j][tri];
 	if ( p != -1 ) {
-		return p;
+        trace_str("returning first grid plane");
+        trace_i32(p);
+        return p;
 	}
 	p = gridPlanes[i][j][!tri];
 	if ( p != -1 ) {
-		return p;
+        trace_str("returning second grid plane");
+        trace_i32(p);
+        return p;
 	}
 
 	// should never happen
@@ -622,7 +670,12 @@ static int CM_EdgePlaneNum( cGrid_t *grid, int gridPlanes[MAX_GRID_SIZE][MAX_GRI
 	vec3_t		up;
 	int			p;
 
-	switch ( k ) {
+    trace_str("CM_EdgePlaneNum");
+    trace_i32(i);
+    trace_i32(j);
+    trace_i32(k);
+    
+    switch ( k ) {
 	case 0:	// top border
 		p1 = grid->points[i][j];
 		p2 = grid->points[i+1][j];
@@ -813,7 +866,8 @@ void CM_AddFacetBevels( facet_t *facet ) {
 	winding_t *w, *w2;
 	vec3_t mins, maxs, vec, vec2;
 
-	Vector4Copy( planes[ facet->surfacePlane ].plane, plane );
+    trace_str("CM_AddFacetBevels");
+    Vector4Copy( planes[ facet->surfacePlane ].plane, plane );
 
 	w = BaseWindingForPlane( plane,  plane[3] );
 	for ( j = 0 ; j < facet->numBorders && w ; j++ ) {
@@ -828,12 +882,17 @@ void CM_AddFacetBevels( facet_t *facet ) {
 		ChopWindingInPlace( &w, plane, plane[3], 0.1f );
 	}
 	if ( !w ) {
+        trace_str("winding is empty");
 		return;
 	}
 
 	WindingBounds(w, mins, maxs);
+    trace_str("winding bounds");
+    trace_vec3(mins);
+    trace_vec3(maxs);
 
 	// add the axial planes
+    trace_str("add the axial planes");
 	order = 0;
 	for ( axis = 0 ; axis < 3 ; axis++ )
 	{
@@ -866,7 +925,8 @@ void CM_AddFacetBevels( facet_t *facet ) {
 			}
 		}
 	}
-	//
+    trace_str("add the edge bevels");
+    //
 	// add the edge bevels
 	//
 	// test the non-axial plane edges
@@ -964,6 +1024,7 @@ void CM_AddFacetBevels( facet_t *facet ) {
 	facet->numBorders++;
 #endif //BSPC
 
+    trace_str("end");
 }
 
 typedef enum {
@@ -972,6 +1033,11 @@ typedef enum {
 	EN_BOTTOM,
 	EN_LEFT
 } edgeName_t;
+
+static void trace_patchCollide(const patchCollide_t* pf, const char* label) {
+    trace_str(label);
+
+}
 
 /*
 ==================
@@ -986,11 +1052,14 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
 	int				borders[4];
 	int				noAdjust[4];
 
+    trace_str("CM_PatchCollideFromGrid");
+
 	numPlanes = 0;
 	numFacets = 0;
 
 	// find the planes for each triangle of the grid
-	for ( i = 0 ; i < grid->width - 1 ; i++ ) {
+    trace_str("find the planes for each triangle of the grid");
+    for ( i = 0 ; i < grid->width - 1 ; i++ ) {
 		for ( j = 0 ; j < grid->height - 1 ; j++ ) {
 			p1 = grid->points[i][j];
 			p2 = grid->points[i+1][j];
@@ -1005,9 +1074,13 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
 	}
 
 	// create the borders for each facet
+    trace_str("create the borders for each facet");
 	for ( i = 0 ; i < grid->width - 1 ; i++ ) {
 		for ( j = 0 ; j < grid->height - 1 ; j++ ) {
-			 
+            trace_str("iter: i,j");
+            trace_i32(i);
+            trace_i32(j);
+
 			borders[EN_TOP] = -1;
 			if ( j > 0 ) {
 				borders[EN_TOP] = gridPlanes[i][j-1][1];
@@ -1018,6 +1091,8 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
 			if ( borders[EN_TOP] == -1 || noAdjust[EN_TOP] ) {
 				borders[EN_TOP] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 0 );
 			}
+            trace_str("borders[EN_TOP]:");
+            trace_i32(borders[EN_TOP]);
 
 			borders[EN_BOTTOM] = -1;
 			if ( j < grid->height - 2 ) {
@@ -1029,6 +1104,8 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
 			if ( borders[EN_BOTTOM] == -1 || noAdjust[EN_BOTTOM] ) {
 				borders[EN_BOTTOM] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 2 );
 			}
+            trace_str("borders[EN_BOTTOM]:");
+            trace_i32(borders[EN_BOTTOM]);
 
 			borders[EN_LEFT] = -1;
 			if ( i > 0 ) {
@@ -1040,6 +1117,8 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
 			if ( borders[EN_LEFT] == -1 || noAdjust[EN_LEFT] ) {
 				borders[EN_LEFT] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 3 );
 			}
+            trace_str("borders[EN_LEFT]:");
+            trace_i32(borders[EN_LEFT]);
 
 			borders[EN_RIGHT] = -1;
 			if ( i < grid->width - 2 ) {
@@ -1051,6 +1130,8 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
 			if ( borders[EN_RIGHT] == -1 || noAdjust[EN_RIGHT] ) {
 				borders[EN_RIGHT] = CM_EdgePlaneNum( grid, gridPlanes, i, j, 1 );
 			}
+            trace_str("borders[EN_RIGHT]:");
+            trace_i32(borders[EN_RIGHT]);
 
 			if ( numFacets == MAX_FACETS ) {
 				Com_Error( ERR_DROP, "MAX_FACETS" );
@@ -1060,8 +1141,10 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
 
 			if ( gridPlanes[i][j][0] == gridPlanes[i][j][1] ) {
 				if ( gridPlanes[i][j][0] == -1 ) {
-					continue;		// degenrate
+                    trace_str("degenerate");
+                    continue;		// degenrate
 				}
+                trace_str("adding facet:");
 				facet->surfacePlane = gridPlanes[i][j][0];
 				facet->numBorders = 4;
 				facet->borderPlanes[0] = borders[EN_TOP];
@@ -1079,6 +1162,7 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
 				}
 			} else {
 				// two seperate triangles
+                trace_str("two separate triangles");
 				facet->surfacePlane = gridPlanes[i][j][0];
 				facet->numBorders = 3;
 				facet->borderPlanes[0] = borders[EN_TOP];
@@ -1127,6 +1211,34 @@ static void CM_PatchCollideFromGrid( cGrid_t *grid, patchCollide_t *pf ) {
 	}
 
 	// copy the results out
+    trace_str("facets:");
+    trace_i32(numFacets);
+    for (int i = 0; i < numFacets; ++i) {
+        trace_str("facet:");
+        trace_i32(facets[i].surfacePlane);
+        trace_i32(facets[i].numBorders);
+        trace_str("...borderPlanes");
+        for (int j = 0; j < facets[i].numBorders; ++j) {
+            trace_i32(facets[i].borderPlanes[j]);
+        }
+        trace_str("...borderInward");
+        for (int j = 0; j < facets[i].numBorders; ++j) {
+            trace_i32(facets[i].borderInward[j]);
+        }
+        trace_str("...borderNoAdjust");
+        for (int j = 0; j < facets[i].numBorders; ++j) {
+            trace_i32(facets[i].borderNoAdjust[j]);
+        }
+    }
+    trace_str("planes:");
+    trace_i32(numPlanes);
+    for (int i = 0; i < numPlanes; ++i) {
+        trace_str("plane:");
+        trace_vec3(planes[i].plane);
+        trace_f32(planes[i].plane[3]);
+    }
+    trace_str(".");
+
 	pf->numPlanes = numPlanes;
 	pf->numFacets = numFacets;
 	pf->facets = Hunk_Alloc( numFacets * sizeof( *pf->facets ), h_high );

@@ -494,6 +494,8 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 	vec3_t		startp;
 	vec3_t		endp;
 
+    trace_str("CM_TraceThroughBrush");
+
 	enterFrac = -1.0;
 	leaveFrac = 1.0;
 	clipplane = NULL;
@@ -509,6 +511,7 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 
 	leadside = NULL;
 
+    trace_i32(tw->sphere.use);
 	if ( tw->sphere.use ) {
 		//
 		// compare the trace against all planes of the brush
@@ -582,15 +585,30 @@ void CM_TraceThroughBrush( traceWork_t *tw, cbrush_t *brush ) {
 		// find the latest time the trace crosses a plane towards the interior
 		// and the earliest time the trace crosses a plane towards the exterior
 		//
-		for (i = 0; i < brush->numsides; i++) {
-			side = brush->sides + i;
+        trace_str("compare the trace against all planes of the brush");
+        trace_i32(brush->sides - cm.brushsides);
+        trace_i32(brush->numsides);
+        for (i = 0; i < brush->numsides; i++) {
+            trace_str("side:");
+            side = brush->sides + i;
 			plane = side->plane;
+            trace_str("plane_num");
+            trace_i32(side->plane - cm.planes);
+
+            trace_str("plane.signbits");
+            trace_i32(plane->signbits);
+            trace_vec3(tw->offsets[plane->signbits]);
+            trace_vec3(plane->normal);
+            trace_f32(plane->dist);
 
 			// adjust the plane distance apropriately for mins/maxs
+            trace_str("computing distance");
 			dist = plane->dist - DotProduct( tw->offsets[ plane->signbits ], plane->normal );
-
+            trace_f32(dist);
 			d1 = DotProduct( tw->start, plane->normal ) - dist;
 			d2 = DotProduct( tw->end, plane->normal ) - dist;
+            trace_f32(d1);
+            trace_f32(d2);
 
 			if (d2 > 0) {
 				getout = qtrue;	// endpoint is not in solid
@@ -671,6 +689,7 @@ void CM_TraceThroughLeaf( traceWork_t *tw, cLeaf_t *leaf ) {
 	cPatch_t	*patch;
 
     trace_str("CM_TraceThroughLeaf");
+    trace_f32(tw->trace.fraction);
 
 	// trace line against all brushes in the leaf
 	for ( k = 0 ; k < leaf->numLeafBrushes ; k++ ) {
@@ -691,12 +710,15 @@ void CM_TraceThroughLeaf( traceWork_t *tw, cLeaf_t *leaf ) {
 		}
 
 		CM_TraceThroughBrush( tw, b );
-		if ( !tw->trace.fraction ) {
-            trace_str("fraction is non-zero, returning");
-            trace_f32(tw->trace.fraction);
+        trace_f32(tw->trace.fraction);
+        if ( !tw->trace.fraction ) {
+            trace_str("fraction is zero, returning");
             return;
 		}
 	}
+
+    trace_str("fraction");
+    trace_f32(tw->trace.fraction);
 
 	// trace line against all patches in the leaf
     trace_str("trace line against all patches in the leaf");
