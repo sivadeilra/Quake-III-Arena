@@ -20,8 +20,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 
-use crate::prelude::*;
 use crate::port_trace::*;
+use crate::prelude::*;
 use log::warn;
 
 pub type winding_t = Vec<vec3_t>;
@@ -156,7 +156,7 @@ pub fn BaseWindingForPlane(normal: vec3_t, dist: vec_t) -> winding_t {
         match x {
             0 | 1 => vup[2] = 1.0,
             2 => vup[0] = 1.0,
-            _ => panic!()
+            _ => panic!(),
         }
     }
     trace_str("vup");

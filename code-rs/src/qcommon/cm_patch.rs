@@ -23,27 +23,18 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #![allow(non_upper_case_globals)]
 
 use crate::is_close_to;
+use crate::port_trace::*;
 use crate::prelude::*;
 use crate::qcommon::cm_load::Error;
 use crate::qcommon::cm_local::*;
 use crate::qcommon::cm_polylib::*;
 use crate::qcommon::cm_trace::traceWork_t;
-use crate::port_trace::*;
 use log::warn;
 use std::mem::swap;
 
 //#define   CULL_BBOX
 
 /*
-
-This file does not reference any globals, and has these entry points:
-
-void CM_ClearLevelPatches( void );
-struct patchCollide_s   *CM_GeneratePatchCollide( int width, int height, const vec3_t *points );
-void CM_TraceThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *pc );
-bool CM_PositionTestInPatchCollide( traceWork_t *tw, const struct patchCollide_s *pc );
-void CM_DrawDebugSurface( void (*drawPoly)(int color, int numPoints, flaot *points) );
-
 
 Issues for collision against curved surfaces:
 
@@ -87,10 +78,7 @@ impl plane_t {
         }
     }
 
-    // TODO: Figure out the right name for this. This pattern happens over and over, so it's clearly
-    // a fundamental operation.
-    // distance_to() ?
-    pub fn project_near(&self, v: vec3_t) -> f32 {
+    pub fn distance_to(&self, v: vec3_t) -> f32 {
         self.normal.dot(v) - self.dist
     }
 }
@@ -108,6 +96,14 @@ pub struct facet_t {
     pub borderPlanes: [i32; 4 + 6 + 16],
     pub borderInward: [bool; 4 + 6 + 16],
     pub borderNoAdjust: [bool; 4 + 6 + 16],
+}
+
+impl facet_t {
+    pub fn iter_border_planes(&self) -> impl Iterator<Item = i32> + '_ {
+        self.borderPlanes[..self.numBorders as usize]
+            .iter()
+            .copied()
+    }
 }
 
 pub type patchCollide_s = patchCollide_t;
@@ -149,46 +145,6 @@ pub const PLANE_TRI_EPSILON: f32 = 0.1;
 pub const WRAP_POINT_EPSILON: f32 = 0.1;
 
 type GridPlanes = [[[i32; 2]; MAX_GRID_SIZE]; MAX_GRID_SIZE];
-
-/*
-===========================================================================
-Copyright (C) 1999-2005 Id Software, Inc.
-
-This file is part of Quake III Arena source code.
-
-Quake III Arena source code is free software; you can redistribute it
-and/or modify it under the terms of the GNU General Public License as
-published by the Free Software Foundation; either version 2 of the License,
-or (at your option) any later version.
-
-Quake III Arena source code is distributed in the hope that it will be
-useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with Foobar; if not, write to the Free Software
-Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
-===========================================================================
-*/
-
-// #include "cm_local.h"
-
-/*
-
-This file does not reference any globals, and has these entry points:
-
-void CM_ClearLevelPatches( void );
-struct patchCollide_s   *CM_GeneratePatchCollide( int width, int height, const vec3_t *points );
-void CM_TraceThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *pc );
-bool CM_PositionTestInPatchCollide( traceWork_t *tw, const struct patchCollide_s *pc );
-void CM_DrawDebugSurface( void (*drawPoly)(int color, int numPoints, flaot *points) );
-
-
-WARNING: this may misbehave with meshes that have rows or columns that only
-degenerate a few triangles.  Completely degenerate rows and columns are handled
-properly.
-*/
 
 use crate::perf::StaticCounter;
 
@@ -237,7 +193,9 @@ fn CM_PlaneFromPoints(a: vec3_t, b: vec3_t, c: vec3_t) -> Option<plane_t> {
 
     let d1 = b - a;
     let d2 = c - a;
-    let normal = if let Some(cp) = CrossProduct(d2, d1).normalize() { cp } else {
+    let normal = if let Some(cp) = CrossProduct(d2, d1).normalize() {
+        cp
+    } else {
         trace_str("cross product is zero");
         return None;
     };
@@ -302,8 +260,8 @@ Swaps the rows and columns in place
 =================
 */
 fn CM_TransposeGrid(grid: &mut cGrid_t) {
-    let width = grid.width as usize;
-    let height = grid.height as usize;
+    let width = grid.width;
+    let height = grid.height;
     let points = &mut grid.points;
 
     if width > height {
@@ -353,8 +311,8 @@ fn CM_SetGridWrapWidth(grid: &mut cGrid_t) {
 }
 
 fn compute_grid_wrap_width(grid: &cGrid_t) -> bool {
-    let height = grid.height as usize;
-    let width = grid.width as usize;
+    let height = grid.height;
+    let width = grid.width;
     let points = &grid.points;
     for i in 0..height {
         let d_v = points[0][i] - points[width - 1][i];
@@ -440,11 +398,6 @@ fn CM_SubdivideGridColumns(grid: &mut cGrid_t) {
     }
 }
 
-/*
-======================
-CM_ComparePoints
-======================
-*/
 pub const POINT_EPSILON: f32 = 0.1;
 
 fn near_zero(f: f32) -> bool {
@@ -457,19 +410,14 @@ fn CM_ComparePoints(a: vec3_t, b: vec3_t) -> bool {
     nears[0] && nears[1] && nears[2]
 }
 
-/*
-=================
-CM_RemoveDegenerateColumns
-
-If there are any identical columns, remove them
-=================
-*/
+/// If there are any identical columns, remove them
 fn CM_RemoveDegenerateColumns(grid: &mut cGrid_t) {
     let mut i: usize = 0;
     while i < grid.width - 1 {
-        let any_degenerate =
-            (0..grid.height).any(|j| !CM_ComparePoints(grid.points[i][j], grid.points[i + 1][j]));
-        if any_degenerate {
+        let row_i = &grid.points[i];
+        let row_next = &grid.points[i + 1];
+        if (0..grid.height).any(|j| !CM_ComparePoints(row_i[j], row_next[j])) {
+            // at least one pair of points was not close to each other
             i += 1;
             continue;
         }
@@ -493,22 +441,9 @@ PATCH COLLIDE GENERATION
 ================================================================================
 */
 
-/*
-static  int             numPlanes;
-static  patchPlane_t    planes[MAX_PATCH_PLANES];
-
-static  int             numFacets;
-static  facet_t         facets[MAX_PATCH_PLANES]; //maybe MAX_FACETS ??
-*/
-
 const NORMAL_EPSILON: f32 = 0.0001;
 const DIST_EPSILON: f32 = 0.02;
 
-/*
-==================
-CM_PlaneEqual
-==================
-*/
 pub struct PlaneEqualOutput {
     pub is_flipped: bool,
     pub is_equal: bool,
@@ -571,11 +506,6 @@ pub fn CM_SnapVector_func(normal: vec3_t) -> vec3_t {
     normal
 }
 
-/*
-==================
-CM_FindPlane2
-==================
-*/
 pub fn CM_FindPlane2(
     planes: &mut Vec<patchPlane_t>,
     plane: plane_t,
@@ -621,7 +551,9 @@ fn CM_FindPlane(
     trace_vec3(p2);
     trace_vec3(p3);
 
-    let new_plane = if let Some(new_plane) = CM_PlaneFromPoints(p1, p2, p3) { new_plane } else {
+    let new_plane = if let Some(new_plane) = CM_PlaneFromPoints(p1, p2, p3) {
+        new_plane
+    } else {
         trace_str("points do not form plane");
         return Ok(-1);
     };
@@ -664,7 +596,7 @@ fn CM_PointOnPlaneSide(planes: &[patchPlane_t], p: vec3_t, planeNum: i32) -> Sid
     }
 
     let plane = planes[planeNum as usize].plane;
-    let d = plane.project_near(p);
+    let d = plane.distance_to(p);
 
     if d > PLANE_TRI_EPSILON {
         SIDE_FRONT
@@ -768,7 +700,7 @@ fn CM_EdgePlaneNum(
             up = VectorMA(p1, 4.0, planes[p].plane.normal);
             CM_FindPlane(planes, p1, p2, up)
         }
-        _ => panic!("CM_EdgePlaneNum: bad k"),
+        _ => panic!(),
     }
     // plane_num can be -1, and that's OK, and is different from an error.
 }
@@ -850,13 +782,7 @@ fn CM_SetBorderInward(
     }
 }
 
-/*
-==================
-CM_ValidateFacet
-
-If the facet isn't bounded by its borders, we screwed up.
-==================
-*/
+/// If the facet isn't bounded by its borders, we screwed up.
 fn CM_ValidateFacet(planes: &[patchPlane_t], facet: &facet_t) -> bool {
     if facet.surfacePlane == -1 {
         return false;
@@ -943,9 +869,9 @@ fn CM_AddFacetBevels(planes: &mut Vec<patchPlane_t>, facet: &mut facet_t) {
                 continue;
             }
             // see if the plane is allready present
-            let any_plane_equal = (0..facet.numBorders as usize).any(|i| {
-                CM_PlaneEqual(planes[facet.borderPlanes[i] as usize].plane, plane).is_equal
-            });
+            let any_plane_equal = facet
+                .iter_border_planes()
+                .any(|plane_num| CM_PlaneEqual(planes[plane_num as usize].plane, plane).is_equal);
             if !any_plane_equal {
                 if facet.numBorders > 4 + 6 + 16 {
                     warn!("ERROR: too many bevels\n");
@@ -981,10 +907,10 @@ fn CM_AddFacetBevels(planes: &mut Vec<patchPlane_t>, facet: &mut facet_t) {
 
         // try the six possible slanted axials from this edge
         for axis in 0..3 {
-            for &dir in [-1, 1].into_iter() {
+            for &dir in [-1.0, 1.0].into_iter() {
                 // construct a plane
                 let mut vec2 = vec3_t::ORIGIN;
-                vec2[axis] = dir as f32;
+                vec2[axis] = dir;
                 let mut plane_normal = CrossProduct(vec, vec2);
                 if VectorNormalize_mut(&mut plane_normal) < 0.5 {
                     continue;
@@ -996,8 +922,7 @@ fn CM_AddFacetBevels(planes: &mut Vec<patchPlane_t>, facet: &mut facet_t) {
 
                 // if all the points of the facet winding are
                 // behind this plane, it is a proper edge bevel
-                let any_points_in_front = w.iter().any(|&wp| plane.project_near(wp) > 0.1);
-                if any_points_in_front {
+                if w.iter().any(|&p| plane.distance_to(p) > 0.1) {
                     continue;
                 }
 
@@ -1006,10 +931,12 @@ fn CM_AddFacetBevels(planes: &mut Vec<patchPlane_t>, facet: &mut facet_t) {
                     continue;
                 }
                 // see if the plane is allready present
-                let any_plane_equal = (0..facet.numBorders as usize).any(|i| {
-                    CM_PlaneEqual(planes[facet.borderPlanes[i] as usize].plane, plane).is_equal
-                });
-                if !any_plane_equal {
+                if !facet.borderPlanes[..facet.numBorders as usize]
+                    .iter()
+                    .any(|&plane_num| {
+                        CM_PlaneEqual(planes[plane_num as usize].plane, plane).is_equal
+                    })
+                {
                     if facet.numBorders > 4 + 6 + 16 {
                         warn!("ERROR: too many bevels\n");
                     }
@@ -1058,7 +985,6 @@ fn CM_AddFacetBevels(planes: &mut Vec<patchPlane_t>, facet: &mut facet_t) {
     trace_str("end");
 }
 
-// was enum
 pub type edgeName_t = usize;
 pub const EN_TOP: edgeName_t = 0;
 pub const EN_RIGHT: edgeName_t = 1;
@@ -1107,8 +1033,7 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> Result<patchCollide_t, Error> {
             }
             noAdjust[EN_TOP] = borders[EN_TOP] == gridPlanes[i][j][0];
             if borders[EN_TOP] == -1 || noAdjust[EN_TOP] {
-                borders[EN_TOP] =
-                    CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 0)?;
+                borders[EN_TOP] = CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 0)?;
             }
             trace_str("borders[EN_TOP]:");
             trace_i32(borders[EN_TOP]);
@@ -1121,8 +1046,7 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> Result<patchCollide_t, Error> {
             }
             noAdjust[EN_BOTTOM] = borders[EN_BOTTOM] == gridPlanes[i][j][1];
             if borders[EN_BOTTOM] == -1 || noAdjust[EN_BOTTOM] {
-                borders[EN_BOTTOM] =
-                    CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 2)?;
+                borders[EN_BOTTOM] = CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 2)?;
             }
             trace_str("borders[EN_BOTTOM]:");
             trace_i32(borders[EN_BOTTOM]);
@@ -1136,8 +1060,7 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> Result<patchCollide_t, Error> {
             }
             noAdjust[EN_LEFT] = borders[EN_LEFT] == gridPlanes[i][j][1];
             if borders[EN_LEFT] == -1 || noAdjust[EN_LEFT] {
-                borders[EN_LEFT] =
-                    CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 3)?;
+                borders[EN_LEFT] = CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 3)?;
             }
             trace_str("borders[EN_LEFT]:");
             trace_i32(borders[EN_LEFT]);
@@ -1151,8 +1074,7 @@ fn CM_PatchCollideFromGrid(grid: &cGrid_t) -> Result<patchCollide_t, Error> {
             }
             noAdjust[EN_RIGHT] = borders[EN_RIGHT] == gridPlanes[i][j][0];
             if borders[EN_RIGHT] == -1 || noAdjust[EN_RIGHT] {
-                borders[EN_RIGHT] =
-                    CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 1)?;
+                borders[EN_RIGHT] = CM_EdgePlaneNum(&mut planes, grid, &gridPlanes, i, j, 1)?;
             }
             trace_str("borders[EN_RIGHT]:");
             trace_i32(borders[EN_RIGHT]);
@@ -1289,7 +1211,11 @@ collision detection with a patch mesh.
 Points is packed as concatenated rows.
 ===================
 */
-pub fn CM_GeneratePatchCollide(width: usize, height: usize, points: &[vec3_t]) -> Result<patchCollide_t, Error> {
+pub fn CM_GeneratePatchCollide(
+    width: usize,
+    height: usize,
+    points: &[vec3_t],
+) -> Result<patchCollide_t, Error> {
     assert!(width > 2);
     assert!(height > 2);
     assert!(!points.is_empty());
@@ -1369,13 +1295,7 @@ TRACE TESTING
 ================================================================================
 */
 
-/*
-====================
-CM_TracePointThroughPatchCollide
-
-  special case for point traces because the patch collide "brushes" have no volume
-====================
-*/
+/// Special case for point traces because the patch collide "brushes" have no volume
 fn CM_TracePointThroughPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) {
     let mut frontFacing = [false; MAX_PATCH_PLANES];
     let mut intersection = [0.0f32; MAX_PATCH_PLANES];
@@ -1395,8 +1315,8 @@ fn CM_TracePointThroughPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) {
     // determine the trace's relationship to all planes
     for (i, planes) in pc.planes.iter().enumerate() {
         let offset = tw.offsets[planes.signbits as usize].dot(planes.plane.normal);
-        let d1 = planes.plane.project_near(tw.start) + offset;
-        let d2 = planes.plane.project_near(tw.end) + offset;
+        let d1 = planes.plane.distance_to(tw.start) + offset;
+        let d2 = planes.plane.distance_to(tw.end) + offset;
         frontFacing[i] = d1 > 0.0;
         intersection[i] = if d1 == d2 {
             99999.0
@@ -1454,8 +1374,8 @@ fn CM_TracePointThroughPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) {
 
             // calculate intersection with a slight pushoff
             let offset = tw.offsets[planes.signbits as usize].dot(planes.plane.normal);
-            let d1 = planes.plane.project_near(tw.start) + offset;
-            let d2 = planes.plane.project_near(tw.end) + offset;
+            let d1 = planes.plane.distance_to(tw.start) + offset;
+            let d2 = planes.plane.distance_to(tw.end) + offset;
             tw.trace.fraction = (d1 - SURFACE_CLIP_EPSILON) / (d1 - d2);
 
             if tw.trace.fraction < 0.0 {
@@ -1468,11 +1388,6 @@ fn CM_TracePointThroughPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) {
     }
 }
 
-/*
-====================
-CM_CheckFacetPlane
-====================
-*/
 struct CheckFacetPlaneOutput {
     pub result: bool,
     pub hit: bool,
@@ -1488,8 +1403,8 @@ fn CM_CheckFacetPlane(
 
     let mut hit = false;
 
-    let d1 = plane.project_near(start);
-    let d2 = plane.project_near(end);
+    let d1 = plane.distance_to(start);
+    let d2 = plane.distance_to(end);
 
     // if completely in front of face, no intersection with the entire facet
     if d1 > 0.0 && (d2 >= SURFACE_CLIP_EPSILON || d2 >= d1) {
@@ -1504,21 +1419,15 @@ fn CM_CheckFacetPlane(
     // crosses face
     if d1 > d2 {
         // enter
-        let mut f = (d1 - SURFACE_CLIP_EPSILON) / (d1 - d2);
-        if f < 0.0 {
-            f = 0.0;
-        }
-        //always favor previous plane hits and thus also the surface plane hit
+        let f = fmax(0.0, (d1 - SURFACE_CLIP_EPSILON) / (d1 - d2));
+        // always favor previous plane hits and thus also the surface plane hit
         if f > *enterFrac {
             *enterFrac = f;
             hit = true;
         }
     } else {
         // leave
-        let mut f = (d1 + SURFACE_CLIP_EPSILON) / (d1 - d2);
-        if f > 1.0 {
-            f = 1.0;
-        }
+        let f = fmin(1.0, (d1 + SURFACE_CLIP_EPSILON) / (d1 - d2));
         if f < *leaveFrac {
             *leaveFrac = f;
         }
@@ -1686,7 +1595,7 @@ pub fn CM_PositionTestInPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) 
                 startp = tw.start;
             }
 
-            if plane.project_near(startp) > 0.0 {
+            if plane.distance_to(startp) > 0.0 {
                 continue;
             }
         }
@@ -1717,7 +1626,7 @@ pub fn CM_PositionTestInPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) 
                 startp = tw.start;
             }
 
-            if plane.project_near(startp) > 0.0 {
+            if plane.distance_to(startp) > 0.0 {
                 early_break = true;
                 break;
             }

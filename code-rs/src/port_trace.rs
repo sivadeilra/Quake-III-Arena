@@ -12,16 +12,6 @@ use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::{JoinHandle, Thread};
 
-enum FooMsg {
-    Ack(Ack)
-}
-
-struct Ack {
-    max_history: usize,
-    total_values: u64,
-    value: TraceValue
-}
-
 enum MsgToPrimary {
     Value(TraceValue),
 }
@@ -171,19 +161,23 @@ std::thread_local! {
 /// a worker thread. Because this code always calls join on the second thread,
 /// we can safely use spawn_unchecked(). This allows the closures to contain
 /// references to items on the stack.
-fn run_two_threads<A, B, OutputA, OutputB>(a: A, b: B) -> (OutputA, OutputB) 
-    where A: FnOnce() -> OutputA + Send,
+fn run_two_threads<A, B, OutputA, OutputB>(a: A, b: B) -> (OutputA, OutputB)
+where
+    A: FnOnce() -> OutputA + Send,
     B: FnOnce() -> OutputB + Send,
     OutputA: Send,
-    OutputB: Send
+    OutputB: Send,
 {
     let builder = std::thread::Builder::new();
-    let joiner = unsafe { builder.spawn_unchecked(move || {
-        trace!("secondary thread is starting");
-        let output = b();
-        trace!("secondary thread is done");
-        output
-        }) }.unwrap();
+    let joiner = unsafe {
+        builder.spawn_unchecked(move || {
+            trace!("secondary thread is starting");
+            let output = b();
+            trace!("secondary thread is done");
+            output
+        })
+    }
+    .unwrap();
     let output_a = a();
     trace!("waiting for secondary thread to finish...");
     let output_b = joiner.join().unwrap();
@@ -243,26 +237,22 @@ where
     // secondary runs on a separate thread
     // primary runs on this thread
 
-    let outputs = run_two_threads(move || {
-        call_impl(test_impl, Arc::new(primary_tracer))
-    },
-    move || {
-        call_impl(ref_impl, Arc::new(secondary_tracer))
-    });
+    let outputs = run_two_threads(
+        move || call_impl(test_impl, Arc::new(primary_tracer)),
+        move || call_impl(ref_impl, Arc::new(secondary_tracer)),
+    );
     trace!("tracing is complete.");
     outputs
 }
 
 pub fn trace_value(value: TraceValue) {
-    let mut local_tracer: Option<Arc<Tracer>> = None;
     AMBIENT_TRACER.with(|t| {
-        local_tracer = t.borrow().clone();
-    });
-    if let Some(tracer) = local_tracer.as_ref() {
-        tracer.trace_value(value);
-    } else {
+        if let Some(tracer) = t.borrow().as_ref() {
+            tracer.trace_value(value);
+        } else {
         // ignore the call, we're not in a trace context
-    }
+        }
+    });
 }
 
 pub fn trace_str(s: &'static str) {
@@ -341,4 +331,3 @@ pub fn trace_vec3(v: crate::vec3::vec3_t) {
     trace_f32(v[1]);
     trace_f32(v[2]);
 }
-

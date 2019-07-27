@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 use crate::encoding::get_le_i32;
 use crate::game::surfaceflags::CONTENTS_BODY;
+use crate::port_trace::*;
 use crate::prelude::*;
 use crate::qcommon::cm_local::*;
 use crate::qcommon::cm_patch::*;
@@ -36,7 +37,6 @@ use lazy_static::lazy_static;
 use log::{debug, info, warn};
 use std::ops::Range;
 use std::sync::Mutex;
-use crate::port_trace::*;
 
 lazy_static! {
     pub static ref GLOBAL_CLIP_MAP: Mutex<Option<clipMap_t>> = Mutex::new(None);
@@ -453,7 +453,9 @@ fn CMod_LoadPatches(
             trace_i32(first_vert as i32);
             if first_vert as usize + c > dv.len() {
                 warn!("patch has bogus value for first_vert, goes beyond verts chunk");
-                return Err(Error::Str("patch has bogus value for first_vert, goes beyond verts chunk"));
+                return Err(Error::Str(
+                    "patch has bogus value for first_vert, goes beyond verts chunk",
+                ));
             }
             for (p, dv_p) in points[..c]
                 .iter_mut()
@@ -666,7 +668,13 @@ pub fn CM_LoadMapFromSlice(name: &str, buf: &[u8]) -> Result<clipMap_t, Error> {
 }
 
 extern "C" {
-    fn ref_LoadMap(name: *const u8, clientLoad: i32, buf: *const u8, length: usize, checksum: *mut u32);
+    fn ref_LoadMap(
+        name: *const u8,
+        clientLoad: i32,
+        buf: *const u8,
+        length: usize,
+        checksum: *mut u32,
+    );
 }
 
 // called by C
@@ -674,21 +682,32 @@ extern "C" {
 unsafe extern "C" fn checked_LoadMap(
     name: *const u8,
     clientLoad: i32,
-    buf: *const u8, len: usize, checksum_c: *mut u32) {
-        let name = name as usize;
+    buf: *const u8,
+    len: usize,
+    checksum_c: *mut u32,
+) {
+    let name = name as usize;
     let data: &'static [u8] = core::slice::from_raw_parts(buf, len);
-    let (ref_checksum, _port_checksum) = crate::port_trace::parallel_trace(move |_tracer| -> u32 {
-        // ref
-        let mut checksum: u32 = 0;
-        ref_LoadMap(name as *const u8, clientLoad, data.as_ptr(), data.len(), &mut checksum);
-        checksum
-    },
-    move |_tracer| -> u32 {
-        // port
-        let mut checksum: u32 = 0;
-        rust_LoadMap(data, &mut checksum);
-        checksum
-    });
+    let (ref_checksum, _port_checksum) = crate::port_trace::parallel_trace(
+        move |_tracer| -> u32 {
+            // ref
+            let mut checksum: u32 = 0;
+            ref_LoadMap(
+                name as *const u8,
+                clientLoad,
+                data.as_ptr(),
+                data.len(),
+                &mut checksum,
+            );
+            checksum
+        },
+        move |_tracer| -> u32 {
+            // port
+            let mut checksum: u32 = 0;
+            rust_LoadMap(data, &mut checksum);
+            checksum
+        },
+    );
     *checksum_c = ref_checksum;
 }
 
