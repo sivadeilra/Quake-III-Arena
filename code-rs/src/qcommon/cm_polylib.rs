@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 use crate::port_trace::*;
 use crate::prelude::*;
+use crate::qcommon::cm_patch::plane_t;
 use log::warn;
 
 pub type winding_t = Vec<vec3_t>;
@@ -197,19 +198,14 @@ struct ClipWindingInfo {
     sides: [Side; MAX_POINTS_ON_WINDING + 4],
     counts: [usize; 3],
 }
-fn get_clip_winding_info(
-    w: &winding_slice,
-    normal: vec3_t,
-    dist: vec_t,
-    epsilon: vec_t,
-) -> ClipWindingInfo {
+fn get_clip_winding_info(w: &winding_slice, plane: plane_t, epsilon: vec_t) -> ClipWindingInfo {
     let mut dists = [0.0f32; MAX_POINTS_ON_WINDING + 4];
     let mut sides = [Side(0); MAX_POINTS_ON_WINDING + 4];
     let mut counts: [usize; 3] = [0; 3];
 
     // determine sides for each point
     for (i, &p) in w.iter().enumerate() {
-        let dot = p.dot(normal) - dist;
+        let dot = plane.distance_to(p);
         dists[i] = dot;
         let this_side = if dot > epsilon {
             SIDE_FRONT
@@ -236,8 +232,7 @@ pub struct ClipWindingEpsilonResult {
 }
 pub fn ClipWindingEpsilon(
     in_: &winding_slice,
-    normal: vec3_t,
-    dist: vec_t,
+    plane: plane_t,
     epsilon: vec_t,
 ) -> ClipWindingEpsilonResult {
     type Output = ClipWindingEpsilonResult;
@@ -246,7 +241,7 @@ pub fn ClipWindingEpsilon(
         dists,
         sides,
         counts,
-    } = get_clip_winding_info(in_, normal, dist, epsilon);
+    } = get_clip_winding_info(in_, plane, epsilon);
 
     if counts[0] == 0 {
         return Output {
@@ -292,14 +287,14 @@ pub fn ClipWindingEpsilon(
         let mid = vec3_t::map_3(
             |normal_c, p1_c, p2_c| {
                 if normal_c == 1.0 {
-                    dist
+                    plane.dist
                 } else if normal_c == -1.0 {
-                    -dist
+                    -plane.dist
                 } else {
                     p1_c + dot * (p2_c - p1_c)
                 }
             },
-            normal,
+            plane.normal,
             p1,
             p2,
         );
@@ -318,12 +313,12 @@ pub fn ClipWindingEpsilon(
     Output { front: f, back: b }
 }
 
-pub fn ChopWindingInPlace(inout: &mut winding_t, normal: vec3_t, dist: vec_t, epsilon: vec_t) {
+pub fn ChopWindingInPlace(inout: &mut winding_t, plane: plane_t, epsilon: vec_t) {
     let ClipWindingInfo {
         dists,
         sides,
         counts,
-    } = get_clip_winding_info(inout, normal, dist, epsilon);
+    } = get_clip_winding_info(inout, plane, epsilon);
 
     if counts[0] == 0 {
         inout.clear();
@@ -364,14 +359,14 @@ pub fn ChopWindingInPlace(inout: &mut winding_t, normal: vec3_t, dist: vec_t, ep
         let mid = vec3_t::map_3(
             |normal_c, p1_c, p2_c| {
                 if normal_c == 1.0 {
-                    dist
+                    plane.dist
                 } else if normal_c == -1.0 {
-                    -dist
+                    -plane.dist
                 } else {
                     p1_c + dot * (p2_c - p1_c)
                 }
             },
-            normal,
+            plane.normal,
             p1,
             p2,
         );
@@ -388,27 +383,15 @@ pub fn ChopWindingInPlace(inout: &mut winding_t, normal: vec3_t, dist: vec_t, ep
     *in_ = f;
 }
 
-/*
-=================
-ChopWinding
-
-Returns the fragment of in that is on the front side
-of the cliping plane.  The original is freed.
-=================
-*/
-pub fn ChopWinding(in_: winding_t, normal: vec3_t, dist: vec_t) -> winding_t {
-    let r = ClipWindingEpsilon(&in_, normal, dist, ON_EPSILON);
-    drop(in_);
+/// Returns the fragment of in that is on the front side
+/// of the cliping plane.  The original is freed.
+pub fn ChopWinding(w: winding_t, plane: plane_t) -> winding_t {
+    let r = ClipWindingEpsilon(&w, plane, ON_EPSILON);
+    drop(w);
     drop(r.back);
     r.front
 }
 
-/*
-=================
-CheckWinding
-
-=================
-*/
 pub fn CheckWinding(w: &winding_t) {
     if w.len() < 3 {
         warn!("CheckWinding: {} points", w.len());

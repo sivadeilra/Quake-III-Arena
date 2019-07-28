@@ -1463,19 +1463,26 @@ CM_CheckFacetPlane
 int CM_CheckFacetPlane(float *plane, vec3_t start, vec3_t end, float *enterFrac, float *leaveFrac, int *hit) {
 	float d1, d2, f;
 
-	*hit = qfalse;
+    trace_str("CM_CheckFacetPlane");
+    trace_f32(*enterFrac);
+    trace_f32(*leaveFrac);
+    *hit = qfalse;
 
 	d1 = DotProduct( start, plane ) - plane[3];
 	d2 = DotProduct( end, plane ) - plane[3];
+    trace_f32(d1);
+    trace_f32(d2);
 
 	// if completely in front of face, no intersection with the entire facet
 	if (d1 > 0 && ( d2 >= SURFACE_CLIP_EPSILON || d2 >= d1 )  ) {
+        trace_str("returning false");
 		return qfalse;
 	}
 
 	// if it doesn't cross the plane, the plane isn't relevent
 	if (d1 <= 0 && d2 <= 0 ) {
-		return qtrue;
+        trace_str("returning true, hit = false");
+        return qtrue;
 	}
 
 	// crosses face
@@ -1518,12 +1525,16 @@ void CM_TraceThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *
 #endif //BSPC
 
 	if (tw->isPoint) {
-		CM_TracePointThroughPatchCollide( tw, pc );
+        trace_str("is point");
+        CM_TracePointThroughPatchCollide( tw, pc );
 		return;
 	}
 
-	facet = pc->facets;
+    trace_str("not point");
+    facet = pc->facets;
 	for ( i = 0 ; i < pc->numFacets ; i++, facet++ ) {
+        trace_str("checking facet#");
+        trace_i32(i);
 		enterFrac = -1.0;
 		leaveFrac = 1.0;
 		hitnum = -1;
@@ -1532,6 +1543,7 @@ void CM_TraceThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *
 		VectorCopy(planes->plane, plane);
 		plane[3] = planes->plane[3];
 		if ( tw->sphere.use ) {
+            trace_str("use sphere");
 			// adjust the plane distance apropriately for radius
 			plane[3] += tw->sphere.radius;
 
@@ -1547,20 +1559,32 @@ void CM_TraceThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *
 			}
 		}
 		else {
+            trace_str("no use sphere");
 			offset = DotProduct( tw->offsets[ planes->signbits ], plane);
 			plane[3] -= offset;
 			VectorCopy( tw->start, startp );
 			VectorCopy( tw->end, endp );
 		}
+        trace_vec3(startp);
+        trace_vec3(endp);
 
 		if (!CM_CheckFacetPlane(plane, startp, endp, &enterFrac, &leaveFrac, &hit)) {
+            trace_str("CheckFacetPlane returned false");
 			continue;
 		}
 		if (hit) {
-			Vector4Copy(plane, bestplane);
-		}
+            trace_str("CheckFacetPlane hit");
+            Vector4Copy(plane, bestplane);
+        }
+        else {
+            trace_str("CheckFacetPlane miss");
+        }
+        trace_f32(enterFrac);
+        trace_f32(leaveFrac);
 
 		for ( j = 0; j < facet->numBorders; j++ ) {
+            trace_str("border#");
+            trace_i32(j);
 			planes = &pc->planes[ facet->borderPlanes[j] ];
 			if (facet->borderInward[j]) {
 				VectorNegate(planes->plane, plane);
@@ -1570,7 +1594,9 @@ void CM_TraceThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *
 				VectorCopy(planes->plane, plane);
 				plane[3] = planes->plane[3];
 			}
-			if ( tw->sphere.use ) {
+            trace_vec3(plane);
+            trace_f32(plane[3]);
+            if ( tw->sphere.use ) {
 				// adjust the plane distance apropriately for radius
 				plane[3] += tw->sphere.radius;
 
@@ -1592,20 +1618,33 @@ void CM_TraceThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *
 				VectorCopy( tw->start, startp );
 				VectorCopy( tw->end, endp );
 			}
+            trace_vec3(startp);
+            trace_vec3(endp);
 
 			if (!CM_CheckFacetPlane(plane, startp, endp, &enterFrac, &leaveFrac, &hit)) {
+                trace_str("CheckFacetPlane false");
 				break;
 			}
 			if (hit) {
+                trace_str("hit, hitnum=");
 				hitnum = j;
 				Vector4Copy(plane, bestplane);
 			}
 		}
-		if (j < facet->numBorders) continue;
+        if (j < facet->numBorders) {
+            trace_str("continue");
+            continue;
+        }
 		//never clip against the back side
-		if (hitnum == facet->numBorders - 1) continue;
+        if (hitnum == facet->numBorders - 1) {
+            trace_str("never clip against the back side");
+            continue;
+        }
 
-		if (enterFrac < leaveFrac && enterFrac >= 0) {
+        trace_f32(enterFrac);
+        trace_f32(leaveFrac);
+        
+        if (enterFrac < leaveFrac && enterFrac >= 0) {
 			if (enterFrac < tw->trace.fraction) {
 				if (enterFrac < 0) {
 					enterFrac = 0;
@@ -1619,6 +1658,11 @@ void CM_TraceThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *
 					debugFacet = facet;
 				}
 #endif //BSPC
+                trace_str("setting fraction");
+                trace_f32(enterFrac);
+                trace_f32(leaveFrac);
+                trace_vec3(bestplane);
+                trace_f32(bestplane[3]);
 
 				tw->trace.fraction = enterFrac;
 				VectorCopy( bestplane, tw->trace.plane.normal );

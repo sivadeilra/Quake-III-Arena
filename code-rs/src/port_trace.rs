@@ -250,7 +250,7 @@ pub fn trace_value(value: TraceValue) {
         if let Some(tracer) = t.borrow().as_ref() {
             tracer.trace_value(value);
         } else {
-        // ignore the call, we're not in a trace context
+            // ignore the call, we're not in a trace context
         }
     });
 }
