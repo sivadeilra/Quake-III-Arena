@@ -1091,7 +1091,7 @@ extern "C" fn rust_tracing_CM_Trace(
     let origin: vec3_t = *origin_ref;
     let sphere: Option<sphere_t> = sphere_opt.map(|v| *v);
 
-    if true {
+    if false {
         *result = rust_CM_Trace(
             start,
             end,

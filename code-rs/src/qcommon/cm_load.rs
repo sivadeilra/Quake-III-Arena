@@ -902,6 +902,17 @@ pub fn CM_TempBoxModel(
     BOX_MODEL_HANDLE
 }
 
+#[no_mangle]
+extern "C" fn rust_CM_TempBoxModel(mins: &vec3_t, maxs: &vec3_t, capsule: i32) -> i32 {
+    let mut g = cm();
+    if let Some(ref mut cm) = *g {
+        CM_TempBoxModel(cm, *mins, *maxs, capsule != 0)
+    } else {
+        panic!("no model");
+    }
+}
+
+
 pub fn CM_ModelBounds(cm: &clipMap_t, model: clipHandle_t) -> vec3_bounds {
     let cmod = CM_ClipHandleToModel(cm, model);
     vec3_bounds {

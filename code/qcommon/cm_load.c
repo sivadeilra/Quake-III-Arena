@@ -638,7 +638,6 @@ void __cdecl checked_LoadMap(
     int clientLoad,
     const unsigned char* buf, size_t length, int* checksum);
 
-
 /*
 ==================
 CM_LoadMap
@@ -843,7 +842,7 @@ BSP trees instead of being compared directly.
 Capsules are handled differently though.
 ===================
 */
-clipHandle_t CM_TempBoxModel( const vec3_t mins, const vec3_t maxs, int capsule ) {
+clipHandle_t real_CM_TempBoxModel( const vec3_t mins, const vec3_t maxs, int capsule ) {
     trace_str("CM_TempBoxModel");
     trace_vec3(mins);
     trace_vec3(maxs);
@@ -873,6 +872,15 @@ clipHandle_t CM_TempBoxModel( const vec3_t mins, const vec3_t maxs, int capsule 
 	VectorCopy( maxs, box_brush->bounds[1] );
 
 	return BOX_MODEL_HANDLE;
+}
+
+int __cdecl rust_CM_TempBoxModel(const vec3_t mins, const vec3_t maxs, int capsule);
+
+clipHandle_t CM_TempBoxModel(const vec3_t mins, const vec3_t maxs, int capsule) {
+    clipHandle_t real_handle = real_CM_TempBoxModel(mins, maxs, capsule);
+    clipHandle_t rust_handle = rust_CM_TempBoxModel(mins, maxs, capsule);
+    assert(real_handle == rust_handle);
+    return real_handle;
 }
 
 /*
