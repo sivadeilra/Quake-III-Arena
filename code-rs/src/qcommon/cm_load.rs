@@ -318,22 +318,32 @@ fn CMod_LoadLeafs(lump: lump_t, file: &FileLoader) -> Result<LoadLeafsOutput, Er
 }
 
 fn CMod_LoadPlanes(lump: lump_t, file: &FileLoader) -> Result<Vec<cplane_t>, Error> {
+    trace_str("CMod_LoadPlanes");
     let planes: &[dplane_t] = file.get_lump_required_as_slice::<dplane_t>(lump)?;
+    trace_i32(planes.len() as i32);
     if planes.is_empty() {
         return Err(Error::Str("Map with no planes"));
     }
-    Ok(planes
+    let result = Ok(planes
         .iter()
         .map(|dplane| -> cplane_t {
             let normal = LittleVec3(dplane.normal);
-            cplane_t {
+            let plane = cplane_t {
                 normal,
                 dist: LittleFloat(dplane.dist),
                 type_: PlaneTypeForNormal(normal),
                 signbits: get_sign_bits(normal),
-            }
+            };
+            trace_str("_");
+            trace_vec3(plane.normal);
+            trace_f32(plane.dist);
+            trace_i32(plane.type_ as i32);
+            trace_i32(plane.signbits as i32);
+            plane
         })
-        .collect())
+        .collect());
+    trace_str(".");
+    result
 }
 
 fn CMod_LoadLeafBrushes(lump: lump_t, file: &FileLoader) -> Result<Vec<i32>, Error> {
@@ -859,6 +869,11 @@ pub fn CM_TempBoxModel(
     maxs: vec3_t,
     capsule: bool,
 ) -> clipHandle_t {
+    trace_str("CM_TempBoxModel");
+    trace_vec3(mins);
+    trace_vec3(maxs);
+    trace_i32(capsule as i32);
+
     cm.box_model.mins = mins;
     cm.box_model.maxs = maxs;
 

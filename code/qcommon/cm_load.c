@@ -319,7 +319,8 @@ void CMod_LoadPlanes (lump_t *l)
 	int			count;
 	int			bits;
 	
-	in = (void *)(cmod_base + l->fileofs);
+    trace_str("CMod_LoadPlanes");
+    in = (void *)(cmod_base + l->fileofs);
 	if (l->filelen % sizeof(*in))
 		Com_Error (ERR_DROP, "MOD_LoadBmodel: funny lump size");
 	count = l->filelen / sizeof(*in);
@@ -328,6 +329,7 @@ void CMod_LoadPlanes (lump_t *l)
 		Com_Error (ERR_DROP, "Map with no planes");
 	cm.planes = Hunk_Alloc( ( BOX_PLANES + count ) * sizeof( *cm.planes ), h_high );
 	cm.numPlanes = count;
+    trace_i32(count);
 
 	out = cm.planes;	
 
@@ -344,7 +346,14 @@ void CMod_LoadPlanes (lump_t *l)
 		out->dist = LittleFloat (in->dist);
 		out->type = PlaneTypeForNormal( out->normal );
 		out->signbits = bits;
+        trace_str("_");
+        trace_vec3(out->normal);
+        trace_f32(out->dist);
+        trace_i32(out->type);
+        trace_i32(out->signbits);
 	}
+
+    trace_str(".");
 }
 
 /*
@@ -835,6 +844,10 @@ Capsules are handled differently though.
 ===================
 */
 clipHandle_t CM_TempBoxModel( const vec3_t mins, const vec3_t maxs, int capsule ) {
+    trace_str("CM_TempBoxModel");
+    trace_vec3(mins);
+    trace_vec3(maxs);
+    trace_i32(capsule);
 
 	VectorCopy( mins, box_model.mins );
 	VectorCopy( maxs, box_model.maxs );

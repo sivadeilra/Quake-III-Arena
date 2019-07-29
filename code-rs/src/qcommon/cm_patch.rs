@@ -1529,7 +1529,9 @@ pub fn CM_TraceThroughPatchCollide(tw: &mut traceWork_t, pc: &patchCollide_t) {
         trace_f32(leaveFrac);
 
         if enterFrac < leaveFrac && enterFrac >= 0.0 {
+            trace_str("enterFrac < leaveFrac && enterFrac >= 0.0");
             if enterFrac < tw.trace.fraction {
+                trace_str("enterFrac < tw.trace.fraction");
                 if enterFrac < 0.0 {
                     enterFrac = 0.0;
                 }

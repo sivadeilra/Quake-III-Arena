@@ -1645,7 +1645,9 @@ void CM_TraceThroughPatchCollide( traceWork_t *tw, const struct patchCollide_s *
         trace_f32(leaveFrac);
         
         if (enterFrac < leaveFrac && enterFrac >= 0) {
-			if (enterFrac < tw->trace.fraction) {
+            trace_str("enterFrac < leaveFrac && enterFrac >= 0.0");
+            if (enterFrac < tw->trace.fraction) {
+                trace_str("enterFrac < tw.trace.fraction");
 				if (enterFrac < 0) {
 					enterFrac = 0;
 				}

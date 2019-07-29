@@ -1091,6 +1091,21 @@ extern "C" fn rust_tracing_CM_Trace(
     let origin: vec3_t = *origin_ref;
     let sphere: Option<sphere_t> = sphere_opt.map(|v| *v);
 
+    if true {
+        *result = rust_CM_Trace(
+            start,
+            end,
+            mins,
+            maxs,
+            model,
+            origin,
+            brushmask,
+            capsule,
+            sphere.as_ref(),
+        );
+        return;
+    }
+
     let (ref_output, test_output) = crate::port_trace::parallel_trace(
         move |_tracer| -> trace_t {
             let mut ref_result = trace_t::default();
@@ -1139,7 +1154,7 @@ extern "C" fn rust_tracing_CM_Trace(
         // continue;
     }
 
-    *result = ref_output.into();
+    *result = ref_output;
 }
 
 // the Rust implementation of CM_Trace
